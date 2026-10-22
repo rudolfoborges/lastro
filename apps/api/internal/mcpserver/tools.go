@@ -45,6 +45,14 @@ type call struct {
 	receivedAt   time.Time
 }
 
+func (c call) actor(author ledger.Author, requestID string) ledger.Actor {
+	return ledger.Actor{
+		Author:    author,
+		Ref:       string(c.principal.CredentialKind()) + ":" + c.principal.CredentialID().String(),
+		RequestID: requestID,
+	}
+}
+
 type outcomeReporter interface {
 	reportedOutcome() Outcome
 }
@@ -151,6 +159,8 @@ func (s *Server) toToolError(ctx context.Context, tool string, err error) *ToolE
 		return invalid("request_id", err.Error())
 	case errors.Is(err, ledger.ErrTransactionClosed):
 		return &ToolError{Outcome: OutcomeFailed, Code: "transaction_closed", Message: err.Error()}
+	case errors.Is(err, ledger.ErrClarificationClosed):
+		return &ToolError{Outcome: OutcomeFailed, Code: "clarification_closed", Message: err.Error()}
 	case errors.Is(err, ledger.ErrObservationClaimed):
 		return &ToolError{Outcome: OutcomeFailed, Code: "evidence_conflict", Message: err.Error()}
 	default:

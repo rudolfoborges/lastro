@@ -42,8 +42,9 @@ type Category struct {
 }
 
 type Split struct {
-	Code   string
-	Amount *money.Money
+	Code       string
+	Amount     *money.Money
+	AmountText string
 }
 
 type Allocation struct {
@@ -123,11 +124,18 @@ func (s *Service) ArchiveCategory(ctx context.Context, accountID uuid.UUID, code
 func (s *Service) Categorize(ctx context.Context, accountID, transactionID uuid.UUID, split []Split, status AllocationStatus, reason string, actor Actor) (Categorization, error) {
 	var result Categorization
 	err := s.inTx(ctx, accountID, func(t *tx) error {
-		transaction, err := t.lockOpenTransaction(transactionID)
-		if err != nil {
-			return err
-		}
-		result, err = t.categorize(transaction, split, status, reason, actor)
+		var err error
+		result, err = once(t, "set_category", actor, []any{transactionID, split, status, reason}, func() (Categorization, error) {
+			transaction, err := t.lockOpenTransaction(transactionID)
+			if err != nil {
+				return Categorization{}, err
+			}
+			result, err := t.categorize(transaction, split, status, reason, actor)
+			if err != nil {
+				return Categorization{}, err
+			}
+			return result, t.refreshClarifications(transactionID)
+		})
 		return err
 	})
 	return result, err
@@ -190,6 +198,9 @@ func (t *tx) categorize(transaction Transaction, split []Split, status Allocatio
 	}
 	if actor.Author != AuthorUser && confirmedAllocations(current) {
 		conflict := FieldConflict{Field: fieldCategory, Current: allocationsJSON(current), Proposed: allocationsJSON(planned)}
+		if err := t.openConflicts(transaction, []FieldConflict{conflict}, actor); err != nil {
+			return Categorization{}, err
+		}
 		return Categorization{Allocations: current, Conflict: &conflict}, nil
 	}
 	if err := t.replaceAllocations(transaction.ID, planned); err != nil {
@@ -197,6 +208,11 @@ func (t *tx) categorize(transaction Transaction, split []Split, status Allocatio
 	}
 	if err := t.recordRevision(transaction.ID, fieldCategory, allocationsJSON(current), allocationsJSON(planned), reason, actor); err != nil {
 		return Categorization{}, err
+	}
+	if actor.Author == AuthorUser {
+		if err := t.closeConflictsOn(transaction.ID, []Field{fieldCategory}); err != nil {
+			return Categorization{}, err
+		}
 	}
 	return Categorization{Allocations: planned, Changed: true}, nil
 }
@@ -230,6 +246,17 @@ func (t *tx) followAmount(transaction Transaction, split []Split, reason string,
 func (t *tx) planAllocations(transaction Transaction, split []Split) ([]Allocation, error) {
 	if len(split) == 0 {
 		return nil, &ValidationError{Field: "categories", Message: "must name at least one category"}
+	}
+	split = slices.Clone(split)
+	for i, part := range split {
+		if part.Amount != nil || part.AmountText == "" {
+			continue
+		}
+		amount, err := money.Parse(part.AmountText, transaction.Amount.Currency)
+		if err != nil {
+			return nil, &ValidationError{Field: "categories", Message: err.Error()}
+		}
+		split[i].Amount = &amount
 	}
 	if len(split) == 1 && split[0].Amount == nil {
 		split = []Split{{Code: split[0].Code, Amount: &transaction.Amount}}

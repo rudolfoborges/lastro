@@ -183,6 +183,17 @@ Every account starts with the categories of the PRD (`internal/taxonomy`); codes
 
 A transaction's categories are `category_allocations`: one or more parts whose amounts add up **exactly** to the transaction amount, each `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Replacing them supersedes the old rows, which stay for history, and writes a `category` revision. The service rejects a split that does not match to the cent with the totals in the message, and deferred constraint triggers enforce the same rule at commit. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, a single category follows it; a split must be sent again with the new amount. A transaction without allocations counts in full as "Não identificado" (`EffectiveAllocations`).
 
+### Clarifications
+
+Questions for Rudolfo are rows in `clarifications` (kind, target transaction or observation, question in pt-BR, context, `open`/`resolved`/`dismissed`). The ledger opens and closes them as a side effect of every change, idempotently: the same cause never has two open questions (`dedup_key`), and a dismissed question is not asked again for the same cause.
+
+- `category_unknown`: a transaction without categories; closed when it gets one.
+- `purpose_unknown`: a Pix without purpose; closed when the purpose is set.
+- `field_conflict`: Case, a rule or the system tried to change a field Rudolfo confirmed; the context carries the current and proposed values, and it closes when Rudolfo changes that field himself.
+- Voiding a transaction dismisses its open questions.
+
+Resolving needs the missing data (categories or purpose), which is applied as Rudolfo's correction; dismissing changes nothing. Both are written to the transaction history. The other kinds (`possible_match`, `reading_doubt`, `statement_*`…) are opened by the notification, statement and reconciliation features.
+
 ### Idempotency
 
 Every write submitted by a client carries a key chosen by the client (for Case, the `request_id` it generates once per expense and reuses on every retry). `idempotency.Do` runs inside the same tenant transaction as the write:
@@ -216,6 +227,10 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_instructions` | any | Returns a procedure (`conversation`, `classification`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
+| `list_clarifications` | `expenses:read` | Lists pending questions by kind, status and purchase period |
+| `resolve_clarification` | `expenses:write` | Answers (`resolve`) or closes (`dismiss`) a question |
+
+Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction.
 
 ## Sensitive data
 

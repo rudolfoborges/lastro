@@ -61,6 +61,24 @@ type CategoryAllocation struct {
 	CreatedAt     time.Time
 }
 
+type Clarification struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	Kind          string
+	TransactionID *uuid.UUID
+	ObservationID *uuid.UUID
+	Subject       string
+	DedupKey      string
+	Question      string
+	Context       []byte
+	Status        string
+	Resolution    *string
+	ResolvedBy    *string
+	ResolvedAt    *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type FieldProvenance struct {
 	AccountID       uuid.UUID
 	TransactionID   uuid.UUID
