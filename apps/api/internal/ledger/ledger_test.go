@@ -58,6 +58,8 @@ func (f *fixture) observation(key, text string) ledger.Observation {
 	return observation
 }
 
+var agent = ledger.Actor{Author: ledger.AuthorAgent, Ref: "test-key"}
+
 func brl(minor int64) money.Money {
 	return money.Money{Minor: minor, Currency: "BRL"}
 }
@@ -83,7 +85,7 @@ func groceries(amount money.Money) ledger.NewTransaction {
 func (f *fixture) transaction(key string) (ledger.Transaction, ledger.Observation) {
 	f.t.Helper()
 	observation := f.observation(key, "Gastei R$ 327,39 no mercado")
-	created, err := f.ledger.CreateTransaction(f.t.Context(), f.account, observation.ID, groceries(brl(32739)))
+	created, err := f.ledger.CreateTransaction(f.t.Context(), f.account, observation.ID, groceries(brl(32739)), agent)
 	if err != nil {
 		f.t.Fatalf("CreateTransaction() error = %v", err)
 	}
@@ -196,7 +198,7 @@ func TestPaymentMethodsAreReusedByKindAndLastDigits(t *testing.T) {
 	observation := f.observation("message-3", "Pix de R$ 50")
 	in := groceries(brl(5000))
 	in.PaymentMethod = &ledger.PaymentMethodRef{Kind: ledger.PaymentPix}
-	pix, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in)
+	pix, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in, agent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +272,7 @@ func TestAccountsCannotReachEachOthersTransactions(t *testing.T) {
 	if _, err := f.ledger.GetTransaction(t.Context(), bob, created.ID); !errors.Is(err, ledger.ErrNotFound) {
 		t.Errorf("GetTransaction as Bob error = %v, want ErrNotFound", err)
 	}
-	if _, err := f.ledger.CreateTransaction(t.Context(), bob, observation.ID, groceries(brl(100))); !errors.Is(err, ledger.ErrNotFound) {
+	if _, err := f.ledger.CreateTransaction(t.Context(), bob, observation.ID, groceries(brl(100)), agent); !errors.Is(err, ledger.ErrNotFound) {
 		t.Errorf("CreateTransaction from Alice's observation as Bob error = %v, want ErrNotFound", err)
 	}
 }
@@ -311,7 +313,7 @@ func TestCreateTransactionValidatesTheData(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			in := groceries(brl(32739))
 			tt.change(&in)
-			_, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in)
+			_, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in, agent)
 			assertValidation(t, err, tt.field)
 		})
 	}
@@ -324,7 +326,7 @@ func TestInstallmentsAndForeignAmountsAreKept(t *testing.T) {
 	in.Installments = &ledger.Installments{Count: 12, Amount: ptr(brl(10000))}
 	in.OriginalAmount = &money.Money{Minor: 22000, Currency: "USD"}
 
-	created, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in)
+	created, err := f.ledger.CreateTransaction(t.Context(), f.account, observation.ID, in, agent)
 
 	if err != nil {
 		t.Fatal(err)

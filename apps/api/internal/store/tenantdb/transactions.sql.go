@@ -55,6 +55,31 @@ func (q *Queries) GetTransaction(ctx context.Context, arg GetTransactionParams) 
 	return i, err
 }
 
+const hasConfirmedEvidenceFrom = `-- name: HasConfirmedEvidenceFrom :one
+SELECT EXISTS (
+    SELECT
+    FROM transaction_evidence e
+    JOIN observations o ON o.account_id = e.account_id AND o.id = e.observation_id
+    WHERE e.account_id = $1
+      AND e.transaction_id = $2
+      AND e.status = 'confirmed'
+      AND o.source = $3
+)
+`
+
+type HasConfirmedEvidenceFromParams struct {
+	AccountID     uuid.UUID
+	TransactionID uuid.UUID
+	Source        string
+}
+
+func (q *Queries) HasConfirmedEvidenceFrom(ctx context.Context, arg HasConfirmedEvidenceFromParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasConfirmedEvidenceFrom, arg.AccountID, arg.TransactionID, arg.Source)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertTransaction = `-- name: InsertTransaction :one
 INSERT INTO transactions (
     id, account_id, original_description, description, merchant, payee, amount_minor, currency,
@@ -162,6 +187,104 @@ type LockTransactionParams struct {
 
 func (q *Queries) LockTransaction(ctx context.Context, arg LockTransactionParams) (Transaction, error) {
 	row := q.db.QueryRow(ctx, lockTransaction, arg.AccountID, arg.ID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.OriginalDescription,
+		&i.Description,
+		&i.Merchant,
+		&i.Payee,
+		&i.AmountMinor,
+		&i.Currency,
+		&i.OriginalAmountMinor,
+		&i.OriginalCurrency,
+		&i.OccurredAt,
+		&i.OccurredOn,
+		&i.DatePrecision,
+		&i.DateSource,
+		&i.PaymentMethodID,
+		&i.Nature,
+		&i.Status,
+		&i.Purpose,
+		&i.InstallmentCount,
+		&i.InstallmentAmountMinor,
+		&i.RefundOfID,
+		&i.MergedIntoID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTransaction = `-- name: UpdateTransaction :one
+UPDATE transactions
+SET description = $1,
+    merchant = $2,
+    payee = $3,
+    amount_minor = $4,
+    currency = $5,
+    original_amount_minor = $6,
+    original_currency = $7,
+    occurred_at = $8,
+    occurred_on = $9,
+    date_precision = $10,
+    date_source = $11,
+    payment_method_id = $12,
+    nature = $13,
+    status = $14,
+    purpose = $15,
+    installment_count = $16,
+    installment_amount_minor = $17,
+    updated_at = now()
+WHERE account_id = $18 AND id = $19
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+`
+
+type UpdateTransactionParams struct {
+	Description            string
+	Merchant               *string
+	Payee                  *string
+	AmountMinor            int64
+	Currency               string
+	OriginalAmountMinor    *int64
+	OriginalCurrency       *string
+	OccurredAt             *time.Time
+	OccurredOn             *time.Time
+	DatePrecision          string
+	DateSource             string
+	PaymentMethodID        *uuid.UUID
+	Nature                 string
+	Status                 string
+	Purpose                *string
+	InstallmentCount       *int32
+	InstallmentAmountMinor *int64
+	AccountID              uuid.UUID
+	ID                     uuid.UUID
+}
+
+func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, updateTransaction,
+		arg.Description,
+		arg.Merchant,
+		arg.Payee,
+		arg.AmountMinor,
+		arg.Currency,
+		arg.OriginalAmountMinor,
+		arg.OriginalCurrency,
+		arg.OccurredAt,
+		arg.OccurredOn,
+		arg.DatePrecision,
+		arg.DateSource,
+		arg.PaymentMethodID,
+		arg.Nature,
+		arg.Status,
+		arg.Purpose,
+		arg.InstallmentCount,
+		arg.InstallmentAmountMinor,
+		arg.AccountID,
+		arg.ID,
+	)
 	var i Transaction
 	err := row.Scan(
 		&i.ID,
