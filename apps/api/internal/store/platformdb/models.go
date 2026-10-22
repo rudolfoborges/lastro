@@ -146,6 +146,18 @@ type Revision struct {
 	CreatedAt     time.Time
 }
 
+type ToolCall struct {
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	CredentialKind string
+	CredentialID   uuid.UUID
+	Tool           string
+	Outcome        string
+	ErrorCode      *string
+	DurationMs     int32
+	OccurredAt     time.Time
+}
+
 type Transaction struct {
 	ID                     uuid.UUID
 	AccountID              uuid.UUID

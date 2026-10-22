@@ -28,11 +28,20 @@ curl localhost:8080/readyz   # {"status":"ready"}
 | `migrate` | One-shot `lastro migrate up` against the current source |
 | `api` | The API rebuilt by [air](https://github.com/air-verse/air) whenever a `.go` or `.sql` file changes |
 | `pgweb` | Web SQL client on `localhost:8081`, only with `docker compose --profile tools up` |
+| `mcp-inspector` | [MCP Inspector](https://github.com/modelcontextprotocol/inspector) web UI on `localhost:6274`, only with the `tools` profile; the access token is in `docker compose logs mcp-inspector` |
 
 Create a development account with synthetic keys (`admin`, `case` with expense and statement scopes, `android` with `wallet:ingest`):
 
 ```bash
 docker compose exec api go run ./cmd/lastro seed
+```
+
+Exercise the MCP server with the Inspector, using the `case` key printed by the seed:
+
+```bash
+docker compose --profile tools up -d mcp-inspector   # web UI: add http://api:8080/mcp with the header Authorization: Bearer lst_…
+docker compose --profile tools run --rm mcp-inspector --cli --transport http \
+  --server-url http://api:8080/mcp --header "Authorization: Bearer lst_…" --method tools/list
 ```
 
 Run the integration tests against the compose database:

@@ -22,6 +22,7 @@ type Deps struct {
 	Accounts          *accounts.Service
 	RateLimits        config.RateLimits
 	TrustProxyHeaders bool
+	MCP               http.Handler
 }
 
 type api struct {
@@ -51,6 +52,10 @@ func NewHandler(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleListKeys))
 	mux.HandleFunc("POST /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleCreateKey))
 	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeKey))
+
+	if deps.MCP != nil {
+		mux.Handle("/mcp", a.mcpEndpoint(deps.MCP))
+	}
 
 	return withRequestID(withAccessLog(deps.Logger)(withRecover(deps.Logger)(mux)))
 }

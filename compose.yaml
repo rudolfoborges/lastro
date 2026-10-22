@@ -49,6 +49,15 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  mcp-inspector:
+    image: ghcr.io/modelcontextprotocol/inspector:2.10.1
+    profiles: ["tools"]
+    ports:
+      - "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274"
+    depends_on:
+      api:
+        condition: service_started
+
   pgweb:
     image: sosedoff/pgweb:0.17.0
     profiles: ["tools"]

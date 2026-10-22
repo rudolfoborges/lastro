@@ -22,7 +22,8 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{name: "serve", summary: "Start the HTTP API", run: runServe},
+		{name: "serve", summary: "Start the HTTP API and the MCP server on /mcp", run: runServe},
+		{name: "mcp-stdio", summary: "Serve MCP over stdin/stdout as the account of LASTRO_API_KEY (development)", run: runMCPStdio},
 		{name: "migrate", summary: "Apply (up), roll back one (down) or list (status) migrations", run: runMigrate},
 		{name: "invites", summary: "Create a single-use sign-up invite (invites create)", run: runInvites},
 		{name: "seed", summary: "Create a development account with admin, case and android keys", run: runSeed},
