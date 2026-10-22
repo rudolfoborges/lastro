@@ -61,6 +61,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | situação do vínculo: sugerido, confirmado, rejeitado, desfeito | `transaction_evidence.status`: `suggested`, `confirmed`, `rejected`, `undone` |
 | quem fez: sistema, Case, regra, Rudolfo | `system`, `agent`, `rule`, `user` |
 | proveniência por campo | `field_provenance` |
+| chave de idempotência / estado da operação: concluída, pendente, falhou | `idempotency_key` / `outcome`: `completed`, `pending`, `failed` |
 | cartão de crédito, cartão de débito, Pix, dinheiro | `credit_card`, `debit_card`, `pix`, `cash` |
 | tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated` |
 
