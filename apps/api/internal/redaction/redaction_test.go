@@ -80,6 +80,8 @@ func TestAuthenticationCodesPasswordsAndTokensAreDiscarded(t *testing.T) {
 		"Seu código de verificação é 482913":                     "Seu código de verificação é [redacted]",
 		"Código: 4829-13 não compartilhe":                        "Código: [redacted] não compartilhe",
 		"OTP 773311":                                             "OTP [redacted]",
+		"o código era 482913":                                    "o código era [redacted]",
+		"use o código de acesso enviado 1234":                    "use o código de acesso enviado [redacted]",
 		"senha: abacaxi123":                                      "senha: [redacted]",
 		"password is hunter2":                                    "password is [redacted]",
 		"CVV 123":                                                "CVV [redacted]",
