@@ -1,6 +1,6 @@
 # Requisitos do controle pessoal de despesas
 
-Versão 2 — 22 de outubro de 2026
+Versão 2.1 — 22 de outubro de 2026
 
 ## 1. Objetivo
 
@@ -22,7 +22,7 @@ Este documento define o que o controle deve oferecer e como seus resultados ser�
 4. O usuário deve conseguir entender a origem e a composição dos totais apresentados.
 5. Correções devem preservar o histórico do que mudou e por quê.
 6. Ausência de notificações não significa ausência de gastos.
-7. Os dados devem permanecer privados e sob controle de Rudolfo.
+7. Os dados devem permanecer privados e sob controle de Rudolfo. O controle pode atender outras contas, mas os dados de cada uma ficam isolados e só são acessíveis a quem ela autorizar.
 
 ## 3. Formas de registrar despesas
 
@@ -203,6 +203,7 @@ O horário do resumo diário ainda precisa ser definido. Não considerar que ess
 - Evitar que uma tentativa repetida após uma falha crie outra despesa.
 - Preservar o que já foi registrado durante interrupções e deixar claro o que não foi recuperado.
 - Manter os dados acessíveis somente a pessoas autorizadas pelo usuário.
+- Manter os dados de cada conta isolados dos das demais. Uma conta só é criada por convite, e o titular pode revogar a qualquer momento os acessos que concedeu.
 - Não incorporar senhas, códigos de autenticação, números completos de cartão ou notificações sem relação com as despesas.
 - Permitir que o usuário interrompa o acompanhamento automático e consulte os dados já registrados.
 - Ter possibilidade de recuperação dos registros e de exportação independente.
