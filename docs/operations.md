@@ -1,0 +1,73 @@
+# Operations
+
+Production runs on [Railway](https://railway.com): one `api` service built from `apps/api/Dockerfile` and one Postgres database, both in the `production` environment of the `lastro` project. The infrastructure is declared in [`.railway/railway.ts`](../.railway/railway.ts) (Railway Infrastructure as Code); `railway.json` is deprecated and must not be added.
+
+## What the IaC declares
+
+| Resource | Settings |
+| --- | --- |
+| `postgres` | Railway Postgres (`postgres-ssl:18`), reached by the API over the private network |
+| `api` | Source: GitHub `main`, root directory `/apps/api`, rebuilt only when `/apps/api/**` changes |
+| | Waits for every GitHub check suite on the commit (the CI workflow) before deploying; a failed CI skips the deploy |
+| | Pre-deploy: `lastro migrate up`, so migrations run before the new version receives traffic and a failure aborts the deploy |
+| | Healthcheck `GET /readyz` (60s), restart on failure (5 retries) |
+| | Variables: `DATABASE_URL` (reference to the database's private URL), `LASTRO_ENV=production`, `LOG_LEVEL=info`, `TRUST_PROXY_HEADERS=true` (Railway's edge sets `X-Real-IP`) |
+
+Secrets live only in Railway variables. Never commit them to `.railway/railway.ts`.
+
+## First-time setup
+
+1. Sign in and create or link the project from the repository root:
+
+   ```bash
+   railway login
+   railway init --name lastro      # or: railway link --project lastro --environment production
+   ```
+
+2. Review and apply the infrastructure:
+
+   ```bash
+   pnpm install
+   railway config plan
+   railway config apply            # only after reviewing the plan
+   ```
+
+   Railway may ask to install its GitHub app on `rudolfoborges/lastro`.
+
+3. Custom domain: add `domains: ["<subdomain>"]` to the `api` service in `.railway/railway.ts`, run plan and apply, then create the DNS record Railway shows. Case and the Android app use this host for `/mcp` and the wallet webhook.
+4. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
+5. Backups: on the Postgres service, open **Backups** and enable the daily, weekly and monthly schedules (retained 6, 27 and 89 days). Check that the Hobby plan offers them; if it does not, record it in the M0 follow-up issue.
+6. Create the first account:
+
+   ```bash
+   railway ssh --service api
+   lastro invites create --note "Rudolfo"
+   ```
+
+   Then sign up with the code through `POST /v1/accounts` (see `apps/api/README.md`) and keep the returned `admin` token in a password manager.
+
+## Deploys
+
+A merge to `main` runs CI. Railway waits for the CI check suites, builds the image, runs `lastro migrate up` in a pre-deploy container, waits for `/readyz` and only then moves traffic to the new deployment.
+
+To roll back, redeploy the previous deployment from the Railway dashboard (images are kept for 72 hours on Hobby). Migrations are not rolled back automatically: when a release must be reverted together with its schema change, run `lastro migrate down` through `railway ssh` before redeploying.
+
+## Backups and restore
+
+Railway backs up the Postgres volume natively; there is no `pg_dump` job. Backups can only be restored into the same project and environment, and wiping a volume deletes its backups.
+
+To restore:
+
+1. On the Postgres service, open **Backups**, choose the backup and select **Restore**.
+2. Railway stages a new volume, named after the backup date, mounted at the same path; the current volume is kept but unmounted.
+3. Review the staged change and select **Deploy**.
+4. Verify: `curl https://<host>/readyz`, `lastro migrate status` through `railway ssh --service api`, and that `GET /v1/whoami` still works with an existing key.
+
+To rehearse the procedure without touching production, create a separate throwaway project from the same IaC, run `lastro seed` there, take a manual backup, change some data, restore and verify. Delete the project afterwards.
+
+The independent export of the records (PRD §11) is covered by issue #47.
+
+## Credentials
+
+- API keys: create and revoke them with an `admin` key through `/v1/api-keys`. Revocation is effective on the next request.
+- Invites: single use and expiring; create them only when someone is about to sign up.

@@ -11,7 +11,8 @@
   },
   "type": "module",
   "devDependencies": {
-    "nx": "23.3.0"
+    "nx": "23.3.0",
+    "railway": "3.16.0"
   },
   "nx": {}
 }

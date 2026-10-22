@@ -33,7 +33,7 @@ To run locally, copy `.env.example` to `.env` and adjust `DATABASE_URL`, or use 
 
 ## Container image
 
-`Dockerfile` has a `dev` stage (Go toolchain and air, used by compose) and a `runtime` stage: a static binary on `distroless/static` running as `nonroot`, with `lastro serve` as the default command.
+`Dockerfile` has a `dev` stage (Go toolchain and air, used by compose) and a `runtime` stage: the static binary on Alpine, running as the unprivileged `lastro` user with `lastro serve` as the default command. Alpine rather than distroless because Railway's pre-deploy command and `railway ssh` sessions need a shell and `lastro` on `PATH`. Deployment is described in [`docs/operations.md`](../../docs/operations.md).
 
 ## Binary
 

@@ -7,7 +7,8 @@ Personal expense tracking reached through Case, the user's AI assistant, over MC
 | Path | Contents |
 | --- | --- |
 | `apps/api` | Go service (`lastro` binary): HTTP API, migrations and CLI. See [`apps/api/README.md`](apps/api/README.md) |
-| `docs` | Product requirements |
+| `docs` | Product requirements and the [operations runbook](docs/operations.md) |
+| `.railway/railway.ts` | Production infrastructure on Railway (IaC) |
 | `compose.yaml` | Local environment |
 
 Tasks run through Nx: `pnpm install`, then `pnpm nx run api:<target>`.
@@ -23,7 +24,7 @@ curl localhost:8080/readyz   # {"status":"ready"}
 
 | Service | What it does |
 | --- | --- |
-| `postgres` | Postgres 17 on `localhost:5432` (`postgres`/`postgres`), with the `lastro` database and the empty `lastro_test` database used by integration tests |
+| `postgres` | Postgres 18 (the major Railway deploys) on `localhost:5432` (`postgres`/`postgres`), with the `lastro` database and the empty `lastro_test` database used by integration tests |
 | `migrate` | One-shot `lastro migrate up` against the current source |
 | `api` | The API rebuilt by [air](https://github.com/air-verse/air) whenever a `.go` or `.sql` file changes |
 | `pgweb` | Web SQL client on `localhost:8081`, only with `docker compose --profile tools up` |
