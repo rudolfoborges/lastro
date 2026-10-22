@@ -139,3 +139,74 @@ func assertSQLState(t *testing.T, err error, code string) {
 		t.Errorf("error = %v, want SQLSTATE %s", err, code)
 	}
 }
+
+func tableNames(t *testing.T, s *Store, query string) []string {
+	t.Helper()
+	rows, err := s.pool.Query(t.Context(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) == 0 {
+		t.Fatal("query returned no tables")
+	}
+	return names
+}
+
+func TestTheTenantRoleCannotDeleteFromAnyTable(t *testing.T) {
+	s := openStore(t)
+
+	for _, table := range tableNames(t, s, `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'goose_db_version'`) {
+		var canDelete bool
+		if err := s.pool.QueryRow(t.Context(), "SELECT has_table_privilege('lastro_app', $1, 'DELETE')", table).Scan(&canDelete); err != nil {
+			t.Fatal(err)
+		}
+		if canDelete {
+			t.Errorf("lastro_app can DELETE from %s", table)
+		}
+	}
+}
+
+func TestEveryTableWithAccountDataIsIsolatedByRowLevelSecurity(t *testing.T) {
+	s := openStore(t)
+	tables := tableNames(t, s, `
+		SELECT c.relname
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public' AND c.relkind = 'r'
+		  AND has_table_privilege('lastro_app', c.oid, 'SELECT')
+		  AND (c.relname = 'accounts' OR EXISTS (
+		      SELECT FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'account_id' AND NOT a.attisdropped))`)
+
+	for _, table := range tables {
+		var enabled bool
+		var policies int
+		err := s.pool.QueryRow(t.Context(), `
+			SELECT c.relrowsecurity, (SELECT count(*) FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname)
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = 'public' AND c.relname = $1`, table).Scan(&enabled, &policies)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !enabled || policies == 0 {
+			t.Errorf("%s is readable by lastro_app without row-level security (enabled=%v, policies=%d)", table, enabled, policies)
+		}
+	}
+}
+
+func TestEvidenceAndHistoryAreAppendOnlyForTheTenantRole(t *testing.T) {
+	s := openStore(t)
+
+	for _, table := range []string{"observations", "observation_interpretations", "api_requests"} {
+		var canUpdate bool
+		if err := s.pool.QueryRow(t.Context(), "SELECT has_table_privilege('lastro_app', $1, 'UPDATE')", table).Scan(&canUpdate); err != nil {
+			t.Fatal(err)
+		}
+		if canUpdate {
+			t.Errorf("lastro_app can UPDATE %s", table)
+		}
+	}
+}

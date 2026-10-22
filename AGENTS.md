@@ -56,6 +56,13 @@ All communication with the user goes through Case, the user's AI assistant, over
 | fuso horário da conta | `timezone` |
 | valor em centavos / moeda | `amount_minor` / `currency` |
 | redação de dados sensíveis | `redaction` |
+| lançamento anulado (registro por engano) | `status` `voided` |
+| origem da evidência: conversa, notificação, linha de fatura, manual, importação | `source`: `conversation`, `wallet_notification`, `statement_line`, `manual`, `import` |
+| situação do vínculo: sugerido, confirmado, rejeitado, desfeito | `transaction_evidence.status`: `suggested`, `confirmed`, `rejected`, `undone` |
+| quem fez: sistema, Case, regra, Rudolfo | `system`, `agent`, `rule`, `user` |
+| proveniência por campo | `field_provenance` |
+| cartão de crédito, cartão de débito, Pix, dinheiro | `credit_card`, `debit_card`, `pix`, `cash` |
+| tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

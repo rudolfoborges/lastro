@@ -40,6 +40,15 @@ type ApiRequest struct {
 	OccurredAt time.Time
 }
 
+type FieldProvenance struct {
+	AccountID       uuid.UUID
+	TransactionID   uuid.UUID
+	Field           string
+	ObservationID   *uuid.UUID
+	ConfirmedByUser bool
+	UpdatedAt       time.Time
+}
+
 type Invite struct {
 	ID         uuid.UUID
 	CodeHash   []byte
@@ -48,4 +57,86 @@ type Invite struct {
 	ExpiresAt  time.Time
 	RedeemedAt *time.Time
 	AccountID  *uuid.UUID
+}
+
+type Observation struct {
+	ID          uuid.UUID
+	AccountID   uuid.UUID
+	Source      string
+	SourceKey   string
+	Payload     []byte
+	Redactions  []byte
+	Fingerprint []byte
+	ReceivedAt  time.Time
+	CreatedAt   time.Time
+}
+
+type ObservationInterpretation struct {
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	ObservationID   uuid.UUID
+	Version         int32
+	EventType       string
+	AmountMinor     *int64
+	Currency        *string
+	Merchant        *string
+	OccurredAt      *time.Time
+	OccurredOn      *time.Time
+	DatePrecision   string
+	DateSource      string
+	PaymentMethodID *uuid.UUID
+	Details         []byte
+	Author          string
+	CreatedAt       time.Time
+}
+
+type PaymentMethod struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+	Kind      string
+	CardLast4 *string
+	Issuer    *string
+	Network   *string
+	Nickname  *string
+	CreatedAt time.Time
+}
+
+type Transaction struct {
+	ID                     uuid.UUID
+	AccountID              uuid.UUID
+	OriginalDescription    string
+	Description            string
+	Merchant               *string
+	Payee                  *string
+	AmountMinor            int64
+	Currency               string
+	OriginalAmountMinor    *int64
+	OriginalCurrency       *string
+	OccurredAt             *time.Time
+	OccurredOn             *time.Time
+	DatePrecision          string
+	DateSource             string
+	PaymentMethodID        *uuid.UUID
+	Nature                 string
+	Status                 string
+	Purpose                *string
+	InstallmentCount       *int32
+	InstallmentAmountMinor *int64
+	RefundOfID             *uuid.UUID
+	MergedIntoID           *uuid.UUID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type TransactionEvidence struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	TransactionID uuid.UUID
+	ObservationID uuid.UUID
+	Status        string
+	Origin        string
+	Score         *int16
+	Reasons       []string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
