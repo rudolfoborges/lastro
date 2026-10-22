@@ -23,12 +23,17 @@ Run every task through Nx from the repository root:
 | `pnpm nx run api:migrate up` | Applies pending migrations (`down` rolls back one, `status` lists them) |
 | `pnpm nx run api:sqlc` | Regenerates the query code from `internal/store/queries` |
 | `pnpm nx run api:sqlc-check` | Fails when the generated code is out of date (runs in CI) |
+| `pnpm nx run api:seed` | Runs `lastro seed` against `DATABASE_URL` |
 
 `build`, `test` and `lint` are cached by Nx; the cache key includes the Go toolchain version.
 
 Go tools used by the targets are pinned in `tools.mod` and run with `go tool -modfile=tools.mod <tool>`, so local runs and CI use the same versions without adding the tools' dependencies to `go.mod`. The Go toolchain itself is pinned by the `toolchain` directive in `go.mod`.
 
-To run locally, copy `.env.example` to `.env` and adjust `DATABASE_URL`.
+To run locally, copy `.env.example` to `.env` and adjust `DATABASE_URL`, or use the compose environment described in the root README.
+
+## Container image
+
+`Dockerfile` has a `dev` stage (Go toolchain and air, used by compose) and a `runtime` stage: a static binary on `distroless/static` running as `nonroot`, with `lastro serve` as the default command.
 
 ## Binary
 
@@ -41,6 +46,7 @@ lastro <command> [arguments]
 | `serve` | Starts the HTTP API and shuts down gracefully on `SIGINT`/`SIGTERM` |
 | `migrate up\|down\|status` | Applies every pending migration, rolls back the latest one or lists them |
 | `invites create [--expires-in 168h] [--note text]` | Creates a single-use sign-up invite and prints its code once |
+| `seed` | Creates a development account with `admin`, `case` and `android` keys and prints their tokens; refuses to run in production |
 | `help` | Lists the commands |
 
 ## Configuration

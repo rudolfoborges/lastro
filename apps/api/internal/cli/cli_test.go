@@ -111,3 +111,31 @@ func TestInvitesRequiresTheCreateActionAndValidFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedCreatesADevelopmentAccountWithKeys(t *testing.T) {
+	vars := map[string]string{"DATABASE_URL": storetest.MigratedDatabaseURL(t)}
+
+	stdout, _, err := run(t, []string{"seed"}, vars)
+
+	if err != nil {
+		t.Fatalf("seed error = %v", err)
+	}
+	for _, name := range []string{"admin", "case", "android"} {
+		if !strings.Contains(stdout, name+" ") {
+			t.Errorf("seed output does not list the %s key: %q", name, stdout)
+		}
+	}
+	if strings.Count(stdout, "lst_") != 3 {
+		t.Errorf("seed output = %q, want three tokens", stdout)
+	}
+}
+
+func TestSeedRefusesToRunInProduction(t *testing.T) {
+	vars := map[string]string{"DATABASE_URL": "postgres://unused/lastro", "LASTRO_ENV": "production"}
+
+	_, _, err := run(t, []string{"seed"}, vars)
+
+	if err == nil || !strings.Contains(err.Error(), "production") {
+		t.Errorf("seed in production error = %v, want refusal", err)
+	}
+}
