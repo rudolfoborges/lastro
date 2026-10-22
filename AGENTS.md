@@ -1,3 +1,57 @@
+# Architecture Principle
+
+All communication with the user goes through Case, the user's AI assistant, over MCP. Case understands and classifies; the server stores, validates and computes.
+
+- The server never interprets or classifies: no PDF parsing, no notification text parsing, no category heuristics, no automatic cross-source matching. Tools receive data Case already understood, validate it and reject it with clear errors.
+- Wallet notifications arrive from the user's own Android app and are stored as `pending_interpretation`. A periodic routine in Case fetches them, interprets and classifies them, and submits the interpretation back.
+- Case decides when evidence from different sources is the same purchase; the server only offers explainable candidates and rejects merges that break invariants.
+- Statement PDFs never reach the server: Case reads them and submits only the structured, classified extraction, with page and excerpt anchors for each item. A resubmitted statement is identified by issuer + card + cycle.
+- The server owns integrity: idempotency, deduplication, invariants (no double counting, statement composition vs. informed total), totals and views, revision history and audit.
+
+# Code Conventions
+
+## Language
+
+- All code is written in English, including the domain: identifiers, entities, fields, enum values, database tables and columns, API routes and payloads, MCP tool names, descriptions, schemas and server instructions, log and error messages, and test names.
+- The PRD (`docs/prd.md`) is written in Portuguese. Translate business terms with the glossary below instead of inventing new names, and extend the glossary when a new term appears.
+- Only user-facing content stays in pt-BR: text that Case relays to Rudolfo and display labels such as category names. It is data, not code.
+
+## Comments
+
+- Avoid comments. Prefer clear names, small functions and tests that document behavior.
+- Write a comment only when the code cannot express the *why* (non-obvious constraint, workaround, external quirk), and always in English.
+- Do not add doc comments just to satisfy linters; lint rules that require them stay disabled.
+
+## Domain Glossary (PRD pt-BR → code)
+
+| PRD term | Code |
+|---|---|
+| lançamento (compra ou movimentação) | `transaction` |
+| observação / evidência | `observation` |
+| vínculo entre lançamento e evidência | `transaction_evidence` |
+| interpretação feita pela Case / pendente de interpretação | `interpretation` / `pending_interpretation` |
+| fusão de lançamentos da mesma compra | `merge` (status `merged`, `merged_into_id`) |
+| leitura da fatura enviada pela Case | `statement_extraction` |
+| situação: provisória / confirmada / pendente de esclarecimento | `status`: `provisional` / `confirmed` / `pending_clarification` |
+| natureza: despesa, encargo, crédito, estorno, pagamento, transferência, ajuste | `nature`: `expense`, `charge`, `credit`, `refund`, `payment`, `transfer`, `adjustment` |
+| estabelecimento / beneficiário | `merchant` / `payee` |
+| meio de pagamento | `payment_method` |
+| modalidade (ex.: Pix parcelado) | `payment_modality` (ex.: `pix_installment`) |
+| categoria / divisão entre categorias | `category` / `category_allocation` |
+| finalidade | `purpose` |
+| fatura / versão da fatura / item da fatura | `statement` / `statement_version` / `statement_line` |
+| fechamento / vencimento / emissão | `closing_date` / `due_date` / `issue_date` |
+| saldo anterior | `previous_balance` |
+| conferência da fatura (conferida) | `statement_review` (`reconciled`) |
+| correspondência entre fontes | `match` |
+| parcelamento / parcela | `installment_plan` / `installment` |
+| compromissos futuros | `future_commitments` |
+| principal, juros, IOF, tarifa | `principal`, `interest`, `iof`, `fee` |
+| dúvida | `clarification` |
+| regra de classificação | `classification_rule` |
+| histórico de alterações | `revision` |
+| acompanhamento automático / cobertura / lacuna | `tracking` / `coverage` / `gap` |
+
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 
