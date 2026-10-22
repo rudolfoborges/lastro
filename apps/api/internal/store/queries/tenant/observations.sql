@@ -27,3 +27,16 @@ SELECT *
 FROM observation_interpretations
 WHERE account_id = @account_id AND observation_id = @observation_id
 ORDER BY version;
+
+-- name: FindRecentRepetition :one
+SELECT t.id AS transaction_id, o.received_at
+FROM observations o
+JOIN transaction_evidence e ON e.account_id = o.account_id AND e.observation_id = o.id AND e.status = 'confirmed'
+JOIN transactions t ON t.account_id = e.account_id AND t.id = e.transaction_id
+WHERE o.account_id = @account_id
+  AND o.source = @source
+  AND o.fingerprint = @fingerprint
+  AND o.received_at >= @since
+  AND t.status NOT IN ('voided', 'merged')
+ORDER BY o.received_at DESC
+LIMIT 1;

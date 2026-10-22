@@ -12,6 +12,44 @@ import (
 	"github.com/google/uuid"
 )
 
+const findRecentRepetition = `-- name: FindRecentRepetition :one
+SELECT t.id AS transaction_id, o.received_at
+FROM observations o
+JOIN transaction_evidence e ON e.account_id = o.account_id AND e.observation_id = o.id AND e.status = 'confirmed'
+JOIN transactions t ON t.account_id = e.account_id AND t.id = e.transaction_id
+WHERE o.account_id = $1
+  AND o.source = $2
+  AND o.fingerprint = $3
+  AND o.received_at >= $4
+  AND t.status NOT IN ('voided', 'merged')
+ORDER BY o.received_at DESC
+LIMIT 1
+`
+
+type FindRecentRepetitionParams struct {
+	AccountID   uuid.UUID
+	Source      string
+	Fingerprint []byte
+	Since       time.Time
+}
+
+type FindRecentRepetitionRow struct {
+	TransactionID uuid.UUID
+	ReceivedAt    time.Time
+}
+
+func (q *Queries) FindRecentRepetition(ctx context.Context, arg FindRecentRepetitionParams) (FindRecentRepetitionRow, error) {
+	row := q.db.QueryRow(ctx, findRecentRepetition,
+		arg.AccountID,
+		arg.Source,
+		arg.Fingerprint,
+		arg.Since,
+	)
+	var i FindRecentRepetitionRow
+	err := row.Scan(&i.TransactionID, &i.ReceivedAt)
+	return i, err
+}
+
 const getObservation = `-- name: GetObservation :one
 SELECT id, account_id, source, source_key, payload, redactions, fingerprint, received_at, created_at
 FROM observations

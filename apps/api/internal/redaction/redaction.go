@@ -34,6 +34,9 @@ var (
 		`|verification\s+code|security\s+code|one[- ]time\s+(?:code|password)` +
 		`|otp|token|senha|password|passcode|pin|cvv|cvc` +
 		`)\b(\s*(?:[:=]|é|eh|is)?\s*)([A-Za-z0-9][A-Za-z0-9-]{2,})`)
+	numericCode = regexp.MustCompile(`(?i)\b(` +
+		`c[oó]digo|code|otp|token|senha|password|passcode|pin|cvv|cvc` +
+		`)\b((?:\s+[^\s\d]{1,12}){0,3}\s*[:=]?\s*)(\d[\d-]{2,11})\b`)
 	bearerSecret  = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{10,}`)
 	issuedSecret  = regexp.MustCompile(`\b(?:lst|lat|lrt|inv)_[A-Za-z0-9_-]{10,}`)
 	jwtLikeSecret = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`)
@@ -62,6 +65,11 @@ type redactor struct {
 }
 
 func (r *redactor) secrets(text string) string {
+	text = numericCode.ReplaceAllStringFunc(text, func(match string) string {
+		parts := numericCode.FindStringSubmatch(match)
+		r.counts[KindSecret]++
+		return parts[1] + parts[2] + Placeholder
+	})
 	text = labeledSecret.ReplaceAllStringFunc(text, func(match string) string {
 		parts := labeledSecret.FindStringSubmatch(match)
 		label, separator, value := parts[1], parts[2], parts[3]

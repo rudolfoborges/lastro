@@ -183,6 +183,19 @@ Every account starts with the categories of the PRD (`internal/taxonomy`); codes
 
 A transaction's categories are `category_allocations`: one or more parts whose amounts add up **exactly** to the transaction amount, each `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Replacing them supersedes the old rows, which stay for history, and writes a `category` revision. The service rejects a split that does not match to the cent with the totals in the message, and deferred constraint triggers enforce the same rule at commit. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, a single category follows it; a split must be sent again with the new amount. A transaction without allocations counts in full as "Não identificado" (`EffectiveAllocations`).
 
+### Recording from the conversation
+
+`record_expense` (`ledger.Service.RecordExpense`) turns what Case understood into an observation `conversation` (raw text and Case's reading, redacted), its interpretation, a transaction with the conversation as confirmed evidence, the category Case gave and the questions that remain, all in one transaction:
+
+| `result` | `outcome` | Meaning |
+| --- | --- | --- |
+| `recorded` | `completed` | Written; the answer lists `inferred` and `pending` fields |
+| `duplicate_of` | `completed` | The same `request_id` was already recorded; the existing transaction is returned |
+| `possible_duplicate` | `pending` | Nothing written: the same amount and normalized text arrived in the same ChatGPT conversation (`_meta["openai/session"]`) in the last 24 hours. Case asks Rudolfo and, for a second real purchase, repeats the call with `confirm_distinct: true` |
+| `needs_clarification` | `pending` | Nothing written: the amount or what was bought is missing; `question` says what to ask |
+
+Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments are kept as informed; the installment plan comes later.
+
 ### Clarifications
 
 Questions for Rudolfo are rows in `clarifications` (kind, target transaction or observation, question in pt-BR, context, `open`/`resolved`/`dismissed`). The ledger opens and closes them as a side effect of every change, idempotently: the same cause never has two open questions (`dedup_key`), and a dismissed question is not asked again for the same cause.
@@ -227,6 +240,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_instructions` | any | Returns a procedure (`conversation`, `classification`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
+| `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
 | `list_clarifications` | `expenses:read` | Lists pending questions by kind, status and purchase period |
 | `resolve_clarification` | `expenses:write` | Answers (`resolve`) or closes (`dismiss`) a question |
 
