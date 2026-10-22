@@ -119,6 +119,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/money` | Amounts in minor units: canonical parsing, pt-BR formatting and same-currency arithmetic |
 | `internal/config` | Typed configuration loaded from the environment |
 | `internal/httpapi` | Routes, handlers and middleware |
+| `internal/idempotency` | Exactly-once execution of client submissions, keyed by account, operation and client key |
 | `internal/ledger` | Domain core: observations and their interpretations, transactions, evidence links, payment methods and field provenance |
 | `internal/logging` | `log/slog` setup |
 | `internal/store` | Postgres pool and the platform and tenant transactions |
@@ -163,6 +164,17 @@ Queries are split in two sqlc packages:
 | `platformdb`, via `Store.Platform()` or `Store.PlatformTx` | The schema owner, which bypasses RLS | Only what happens before an account is known, such as API key lookup and sign-up |
 
 `TenantTx` runs `SET LOCAL ROLE lastro_app` and `set_config('app.account_id', …, true)` at the start of the transaction. The role is created by the first migration with `SELECT`, `INSERT` and `UPDATE` as default privileges on new tables; it has no `DELETE` and does not bypass RLS.
+
+### Idempotency
+
+Every write submitted by a client carries a key chosen by the client (for Case, the `request_id` it generates once per expense and reuses on every retry). `idempotency.Do` runs inside the same tenant transaction as the write:
+
+- same key and same request: the stored response is replayed and nothing is written again;
+- same key and a different request: `idempotency.ErrConflict`;
+- concurrent calls with the same key wait on a transaction-scoped advisory lock and then replay the first response;
+- if the work fails, the transaction rolls back and no key is recorded, so the retry runs from scratch.
+
+A key is therefore only ever stored for work that was committed, and a response is never sent for a write that did not happen. Keys are kept: the table has no `UPDATE` or `DELETE` for the application role.
 
 ### Integration tests
 

@@ -49,6 +49,15 @@ type FieldProvenance struct {
 	UpdatedAt       time.Time
 }
 
+type IdempotencyKey struct {
+	AccountID   uuid.UUID
+	Operation   string
+	Key         string
+	RequestHash []byte
+	Response    []byte
+	CreatedAt   time.Time
+}
+
 type Invite struct {
 	ID         uuid.UUID
 	CodeHash   []byte
