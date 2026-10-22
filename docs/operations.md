@@ -33,7 +33,14 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
 
 3. Wire the deploy job: in the project's **Settings → Tokens**, create a token for `production` and store it as the repository secret `RAILWAY_TOKEN` (`gh secret set RAILWAY_TOKEN`). Store the service and environment IDs as the repository variables `RAILWAY_SERVICE_ID` and `RAILWAY_ENVIRONMENT_ID` (`gh variable set`).
 
-4. Custom domain: add `domains: ["<subdomain>"]` to the `api` service in `.railway/railway.ts`, run plan and apply, then create the DNS record Railway shows. Case and the Android app use this host for `/mcp` and the wallet webhook.
+4. Custom domain: Railway configuration cannot register custom domains, so create it with the CLI and then list it in `domains` of the `api` service in `.railway/railway.ts` (`railway config plan` must report no changes):
+
+   ```bash
+   railway domain <host> --service api          # may print "Failed to create custom domain" even when it succeeds
+   railway domain status <host> --service api   # CNAME target and the _railway-verify TXT record
+   ```
+
+   Create both DNS records at the zone's provider. The certificate is issued once Railway sees them. Production uses `lastro.code04.dev`; Case and the Android app use this host for `/mcp` and the wallet webhook.
 5. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
 6. Create the first account:
 

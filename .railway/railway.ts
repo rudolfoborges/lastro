@@ -9,6 +9,7 @@ export default defineRailway(() => {
     preDeploy: "lastro migrate up",
     healthcheck: "/readyz",
     healthcheckTimeout: 60,
+    domains: ["lastro.code04.dev"],
     deploy: { restartPolicyMaxRetries: 5 },
     env: {
       DATABASE_URL: db.env.DATABASE_URL,
