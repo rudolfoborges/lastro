@@ -36,8 +36,7 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
 
 3. Custom domain: add `domains: ["<subdomain>"]` to the `api` service in `.railway/railway.ts`, run plan and apply, then create the DNS record Railway shows. Case and the Android app use this host for `/mcp` and the wallet webhook.
 4. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
-5. Backups: on the Postgres service, open **Backups** and enable the daily, weekly and monthly schedules (retained 6, 27 and 89 days). Check that the Hobby plan offers them; if it does not, record it in the M0 follow-up issue.
-6. Create the first account:
+5. Create the first account:
 
    ```bash
    railway ssh --service api
@@ -54,9 +53,18 @@ To roll back, redeploy the previous deployment from the Railway dashboard (image
 
 ## Backups and restore
 
-Railway backs up the Postgres volume natively; there is no `pg_dump` job. Backups can only be restored into the same project and environment, and wiping a volume deletes its backups.
+**There are no backups today.** The workspace is on the Hobby plan, where Railway rejects manual backups and backup schedules ("only available for Pro workspaces"), and while the project is experimental it runs without them: losing the Postgres volume loses the data.
 
-To restore:
+Before the new control becomes the main record of expenses (issue #50), pick one of these:
+
+- Move the workspace to Pro and enable the daily, weekly and monthly schedules on the Postgres service's **Backups** tab (retained 6, 27 and 89 days). The restore procedure below applies.
+- Add a scheduled, encrypted `pg_dump` to a bucket.
+
+The independent export of the records (PRD §11) is covered by issue #47.
+
+### Restoring a native backup (Pro)
+
+Backups can only be restored into the same project and environment, and wiping a volume deletes its backups.
 
 1. On the Postgres service, open **Backups**, choose the backup and select **Restore**.
 2. Railway stages a new volume, named after the backup date, mounted at the same path; the current volume is kept but unmounted.
@@ -64,8 +72,6 @@ To restore:
 4. Verify: `curl https://<host>/readyz`, `lastro migrate status` through `railway ssh --service api`, and that `GET /v1/whoami` still works with an existing key.
 
 To rehearse the procedure without touching production, create a separate throwaway project from the same IaC, run `lastro seed` there, take a manual backup, change some data, restore and verify. Delete the project afterwards.
-
-The independent export of the records (PRD §11) is covered by issue #47.
 
 ## Credentials
 
