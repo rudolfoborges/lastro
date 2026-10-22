@@ -18,9 +18,13 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w" -o /out/lastro ./cmd/lastro
 
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+# Alpine instead of distroless: Railway runs pre-deploy commands and `railway ssh`
+# sessions (needed for `lastro invites create`) inside this image, and both
+# need a shell and the binary on PATH.
+FROM alpine:3.24 AS runtime
+RUN apk add --no-cache ca-certificates tzdata \
+    && adduser -D -H -u 10001 lastro
 COPY --from=build /out/lastro /usr/local/bin/lastro
-USER nonroot:nonroot
+USER lastro
 EXPOSE 8080
-ENTRYPOINT ["lastro"]
-CMD ["serve"]
+CMD ["lastro", "serve"]
