@@ -64,6 +64,7 @@ type Patch struct {
 	Nature        *Nature
 	Purpose       Optional[string]
 	Installments  Optional[Installments]
+	Categories    []Split
 }
 
 type FieldConflict struct {
@@ -76,6 +77,7 @@ type Correction struct {
 	Transaction Transaction
 	Changed     []Field
 	Conflicts   []FieldConflict
+	Categories  []Allocation
 }
 
 type Revision struct {
@@ -165,7 +167,7 @@ func (t *tx) correct(transactionID uuid.UUID, patch Patch, reason string, actor 
 	}
 	if len(correction.Changed) == 0 {
 		correction.Transaction = current
-		return correction, nil
+		return t.withCategories(correction, patch.Categories, reason, actor)
 	}
 	if _, err := normalizeNewTransaction(asNewTransaction(next)); err != nil {
 		return Correction{}, err
@@ -207,7 +209,38 @@ func (t *tx) correct(transactionID uuid.UUID, patch Patch, reason string, actor 
 		}
 	}
 	correction.Transaction = saved
+	if slices.Contains(correction.Changed, FieldAmount) {
+		if err := t.followAmount(saved, patch.Categories, reason, actor); err != nil {
+			return Correction{}, err
+		}
+		return t.withCategories(correction, nil, reason, actor)
+	}
+	return t.withCategories(correction, patch.Categories, reason, actor)
+}
+
+func (t *tx) withCategories(correction Correction, split []Split, reason string, actor Actor) (Correction, error) {
+	if split != nil {
+		result, err := t.categorize(correction.Transaction, split, statusChosenBy(actor), reason, actor)
+		if err != nil {
+			return Correction{}, err
+		}
+		if result.Conflict != nil {
+			correction.Conflicts = append(correction.Conflicts, *result.Conflict)
+		}
+	}
+	current, err := t.allocations(correction.Transaction.ID)
+	if err != nil {
+		return Correction{}, err
+	}
+	correction.Categories = EffectiveAllocations(correction.Transaction, current)
 	return correction, nil
+}
+
+func statusChosenBy(actor Actor) AllocationStatus {
+	if actor.Author == AuthorUser {
+		return AllocationConfirmed
+	}
+	return AllocationSuggested
 }
 
 func (t *tx) void(transactionID uuid.UUID, reason string, actor Actor) (Transaction, error) {

@@ -24,8 +24,9 @@ const (
 
 type TransactionDetail struct {
 	Transaction
-	Evidence []Evidence
-	Fields   []FieldSource
+	Categories []Allocation
+	Evidence   []Evidence
+	Fields     []FieldSource
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
@@ -129,7 +130,16 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 	if err != nil {
 		return TransactionDetail{}, err
 	}
-	return TransactionDetail{Transaction: transaction, Evidence: evidence, Fields: fields}, nil
+	allocations, err := t.allocations(id)
+	if err != nil {
+		return TransactionDetail{}, err
+	}
+	return TransactionDetail{
+		Transaction: transaction,
+		Categories:  EffectiveAllocations(transaction, allocations),
+		Evidence:    evidence,
+		Fields:      fields,
+	}, nil
 }
 
 func (t *tx) transaction(id uuid.UUID) (Transaction, error) {

@@ -122,6 +122,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/idempotency` | Exactly-once execution of client submissions, keyed by account, operation and client key |
 | `internal/ledger` | Domain core: observations and their interpretations, transactions, evidence links, payment methods and field provenance |
 | `internal/logging` | `log/slog` setup |
+| `internal/taxonomy` | The default categories every account starts with |
 | `internal/store` | Postgres pool and the platform and tenant transactions |
 | `internal/store/migrations` | SQL migrations embedded in the binary and the goose runner |
 | `internal/store/queries/{platform,tenant}` | SQL queries compiled by sqlc |
@@ -172,6 +173,12 @@ Every change to a transaction goes through `ledger.Service.Correct` (or `Void`),
 Fields Rudolfo changed are marked `confirmed_by_user` in `field_provenance`. Later changes by Case, rules or the system (a new statement, a notification, a reconciliation) never overwrite them: `Correct` applies the other fields and returns the locked ones as conflicts, which become clarifications. The original value always stays in the observation.
 
 Changing the payment method re-applies the status rule: credit card purchases stay `provisional` until a statement line confirms them; Pix, debit card and cash reported by Rudolfo are `confirmed`; an unknown method is `provisional`. A voided transaction is kept with status `voided` and cannot change anymore.
+
+### Categories
+
+Every account starts with the categories of the PRD (`internal/taxonomy`); codes are English (`groceries`, `convenience_snacks`…) and labels are pt-BR display data. Categories can be created, renamed and archived per account; `unidentified` cannot be archived.
+
+A transaction's categories are `category_allocations`: one or more parts whose amounts add up **exactly** to the transaction amount, each `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Replacing them supersedes the old rows, which stay for history, and writes a `category` revision. The service rejects a split that does not match to the cent with the totals in the message, and deferred constraint triggers enforce the same rule at commit. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, a single category follows it; a split must be sent again with the new amount. A transaction without allocations counts in full as "Não identificado" (`EffectiveAllocations`).
 
 ### Idempotency
 
