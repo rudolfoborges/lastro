@@ -139,3 +139,10 @@ func TestSeedRefusesToRunInProduction(t *testing.T) {
 		t.Errorf("seed in production error = %v, want refusal", err)
 	}
 }
+
+func TestMCPStdioRequiresAnAPIKey(t *testing.T) {
+	_, _, err := run(t, []string{"mcp-stdio"}, map[string]string{"DATABASE_URL": "postgres://localhost/none"})
+	if err == nil || !strings.Contains(err.Error(), "LASTRO_API_KEY is required") {
+		t.Errorf("Run(mcp-stdio) error = %v, want missing LASTRO_API_KEY", err)
+	}
+}

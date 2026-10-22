@@ -79,6 +79,25 @@ func (p Principal) Has(scope Scope) bool {
 	return slices.Contains(p.Scopes, scope)
 }
 
+type CredentialKind string
+
+const CredentialAPIKey CredentialKind = "api_key"
+
+func (p Principal) CredentialKind() CredentialKind {
+	return CredentialAPIKey
+}
+
+func (p Principal) CredentialID() uuid.UUID {
+	return p.KeyID
+}
+
+type ToolCallRecord struct {
+	Tool      string
+	Outcome   string
+	ErrorCode string
+	Duration  time.Duration
+}
+
 type RequestRecord struct {
 	RequestID string
 	Method    string
@@ -333,6 +352,27 @@ func (s *Service) RecordRequest(ctx context.Context, p Principal, record Request
 			return fmt.Errorf("record API request: %w", err)
 		}
 		return q.TouchAPIKey(ctx, tenantdb.TouchAPIKeyParams{AccountID: p.AccountID, ID: p.KeyID})
+	})
+}
+
+func (s *Service) RecordToolCall(ctx context.Context, p Principal, record ToolCallRecord) error {
+	return s.store.TenantTx(ctx, p.AccountID, func(q *tenantdb.Queries) error {
+		params := tenantdb.RecordToolCallParams{
+			ID:             store.NewID(),
+			AccountID:      p.AccountID,
+			CredentialKind: string(p.CredentialKind()),
+			CredentialID:   p.CredentialID(),
+			Tool:           record.Tool,
+			Outcome:        record.Outcome,
+			DurationMs:     clampInt32(record.Duration.Milliseconds()),
+		}
+		if record.ErrorCode != "" {
+			params.ErrorCode = &record.ErrorCode
+		}
+		if err := q.RecordToolCall(ctx, params); err != nil {
+			return fmt.Errorf("record tool call: %w", err)
+		}
+		return nil
 	})
 }
 

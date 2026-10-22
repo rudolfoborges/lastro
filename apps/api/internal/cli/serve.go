@@ -11,7 +11,9 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
 	"github.com/rudolfoborges/lastro/apps/api/internal/httpapi"
+	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/logging"
+	"github.com/rudolfoborges/lastro/apps/api/internal/mcpserver"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 )
 
@@ -28,14 +30,17 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 	}
 	defer db.Close()
 
+	accountsService := accounts.NewService(db)
+	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledger.NewService(db), Logger: logger})
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", cfg.Port),
 		Handler: httpapi.NewHandler(httpapi.Deps{
 			Logger:            logger,
 			Database:          db,
-			Accounts:          accounts.NewService(db),
+			Accounts:          accountsService,
 			RateLimits:        cfg.RateLimits,
 			TrustProxyHeaders: cfg.TrustProxyHeaders,
+			MCP:               mcp.HTTPHandler(),
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,

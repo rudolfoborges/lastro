@@ -43,7 +43,8 @@ lastro <command> [arguments]
 
 | Command | What it does |
 | --- | --- |
-| `serve` | Starts the HTTP API and shuts down gracefully on `SIGINT`/`SIGTERM` |
+| `serve` | Starts the HTTP API and the MCP server on `/mcp`, and shuts down gracefully on `SIGINT`/`SIGTERM` |
+| `mcp-stdio` | Serves MCP over stdin/stdout as the account of `LASTRO_API_KEY`, for local MCP clients; logs go to stderr |
 | `migrate up\|down\|status` | Applies every pending migration, rolls back the latest one or lists them |
 | `invites create [--expires-in 168h] [--note text]` | Creates a single-use sign-up invite and prints its code once |
 | `seed` | Creates a development account with `admin`, `case` and `android` keys and prints their tokens; refuses to run in production |
@@ -69,6 +70,7 @@ Configuration comes only from environment variables. The process refuses to boot
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
+| `/mcp` | any key | MCP over Streamable HTTP (stateless, JSON responses); each tool checks its own scope |
 | `GET /healthz` | none | Liveness; never touches the database |
 | `GET /readyz` | none | Readiness; `503` when Postgres does not answer within 2s |
 | `POST /v1/accounts` | invite code | Creates an account and returns its first `admin` key |
@@ -116,6 +118,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/accounts` | Accounts, invites, API keys, scopes, account settings and request audit |
 | `internal/calendar` | Local dates, date precision and source, `now`/`today`/`yesterday` and time zones |
 | `internal/redaction` | Masking of card numbers and CPFs and removal of codes, passwords and tokens in payloads and logs |
+| `internal/mcpserver` | MCP server: tools, prompts, server instructions and Case's procedures (`instructions/*.md`) |
 | `internal/money` | Amounts in minor units: canonical parsing, pt-BR formatting and same-currency arithmetic |
 | `internal/config` | Typed configuration loaded from the environment |
 | `internal/httpapi` | Routes, handlers and middleware |
@@ -196,6 +199,23 @@ A key is therefore only ever stored for work that was committed, and a response 
 Tests that touch Postgres use `storetest.MigratedDatabaseURL(t)` or `storetest.EmptyDatabaseURL(t)`, which create a uniquely named database for the test and drop it afterwards. Migrated databases are cloned from a template built once per migration set, so each test starts from a clean schema in milliseconds.
 
 They need `TEST_DATABASE_URL` pointing at a Postgres server where the user can create databases (the `lastro_test` database of the local compose or the CI service). Without it the tests are skipped locally and fail in CI.
+
+## MCP server
+
+Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Streamable HTTP in stateless mode with JSON responses, so every request is authenticated on its own and any instance can answer it; `lastro mcp-stdio` serves the same tools over stdio for local clients.
+
+- **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes) and refuses the call with a `forbidden` tool error otherwise.
+- **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
+- **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`) for other clients. The server `instructions` summarize the rules.
+- **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
+- **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument.
+
+| Tool | Scope | What it does |
+| --- | --- | --- |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`) in Markdown |
+| `list_categories` | `expenses:read` | Lists the account's category codes and labels |
+| `save_category` | `expenses:write` | Creates a category or renames an existing code |
 
 ## Sensitive data
 
