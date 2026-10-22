@@ -26,6 +26,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       config.LogFormatText,
 		ShutdownTimeout: 15 * time.Second,
+		RateLimits:      config.RateLimits{PerKeyPerMinute: 120, UnauthenticatedPerMinute: 10},
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -53,18 +54,24 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 		"LOG_LEVEL":        "debug",
 		"LOG_FORMAT":       "json",
 		"SHUTDOWN_TIMEOUT": "3s",
+
+		"RATE_LIMIT_PER_MINUTE":                 "30",
+		"UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE": "5",
+		"TRUST_PROXY_HEADERS":                   "true",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
 	want := config.Config{
-		Environment:     config.Test,
-		Port:            9090,
-		DatabaseURL:     "postgres://db/lastro",
-		LogLevel:        slog.LevelDebug,
-		LogFormat:       config.LogFormatJSON,
-		ShutdownTimeout: 3 * time.Second,
+		Environment:       config.Test,
+		Port:              9090,
+		DatabaseURL:       "postgres://db/lastro",
+		LogLevel:          slog.LevelDebug,
+		LogFormat:         config.LogFormatJSON,
+		ShutdownTimeout:   3 * time.Second,
+		RateLimits:        config.RateLimits{PerKeyPerMinute: 30, UnauthenticatedPerMinute: 5},
+		TrustProxyHeaders: true,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -78,6 +85,9 @@ func TestLoadReportsEveryInvalidValue(t *testing.T) {
 		"LOG_LEVEL":        "loud",
 		"LOG_FORMAT":       "xml",
 		"SHUTDOWN_TIMEOUT": "soon",
+
+		"RATE_LIMIT_PER_MINUTE": "0",
+		"TRUST_PROXY_HEADERS":   "maybe",
 	}))
 	if err == nil {
 		t.Fatal("Load() error = nil, want configuration error")
@@ -90,6 +100,8 @@ func TestLoadReportsEveryInvalidValue(t *testing.T) {
 		`LOG_LEVEL must be one of debug, info, warn or error: got "loud"`,
 		`LOG_FORMAT must be json or text: got "xml"`,
 		`SHUTDOWN_TIMEOUT must be a positive duration such as 15s: got "soon"`,
+		`RATE_LIMIT_PER_MINUTE must be a positive integer: got "0"`,
+		`TRUST_PROXY_HEADERS must be true or false: got "maybe"`,
 	} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Errorf("error %q does not mention %q", err, fragment)

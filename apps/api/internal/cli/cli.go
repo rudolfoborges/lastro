@@ -24,6 +24,7 @@ func commands() []command {
 	return []command{
 		{name: "serve", summary: "Start the HTTP API", run: runServe},
 		{name: "migrate", summary: "Apply (up), roll back one (down) or list (status) migrations", run: runMigrate},
+		{name: "invites", summary: "Create a single-use sign-up invite (invites create)", run: runInvites},
 	}
 }
 

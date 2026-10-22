@@ -31,6 +31,15 @@ type Config struct {
 	LogLevel        slog.Level
 	LogFormat       LogFormat
 	ShutdownTimeout time.Duration
+	RateLimits      RateLimits
+	// Only enable behind a proxy that overwrites X-Real-IP and X-Forwarded-For,
+	// otherwise clients can spoof the address used for rate limiting.
+	TrustProxyHeaders bool
+}
+
+type RateLimits struct {
+	PerKeyPerMinute          int
+	UnauthenticatedPerMinute int
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -41,6 +50,11 @@ func Load(getenv func(string) string) (Config, error) {
 		DatabaseURL:     r.required("DATABASE_URL"),
 		LogLevel:        r.logLevel("LOG_LEVEL", slog.LevelInfo),
 		ShutdownTimeout: r.duration("SHUTDOWN_TIMEOUT", 15*time.Second),
+		RateLimits: RateLimits{
+			PerKeyPerMinute:          r.positiveInt("RATE_LIMIT_PER_MINUTE", 120),
+			UnauthenticatedPerMinute: r.positiveInt("UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE", 10),
+		},
+		TrustProxyHeaders: r.boolean("TRUST_PROXY_HEADERS", false),
 	}
 	cfg.LogFormat = r.logFormat("LOG_FORMAT", defaultLogFormat(cfg.Environment))
 	if err := errors.Join(r.errs...); err != nil {
@@ -103,6 +117,32 @@ func (r *reader) port(key string, fallback int) int {
 		return fallback
 	}
 	return port
+}
+
+func (r *reader) positiveInt(key string, fallback int) int {
+	value, ok := r.lookup(key)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 {
+		r.fail("%s must be a positive integer: got %q", key, value)
+		return fallback
+	}
+	return n
+}
+
+func (r *reader) boolean(key string, fallback bool) bool {
+	value, ok := r.lookup(key)
+	if !ok {
+		return fallback
+	}
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		r.fail("%s must be true or false: got %q", key, value)
+		return fallback
+	}
+	return b
 }
 
 func (r *reader) duration(key string, fallback time.Duration) time.Duration {

@@ -40,6 +40,7 @@ lastro <command> [arguments]
 | --- | --- |
 | `serve` | Starts the HTTP API and shuts down gracefully on `SIGINT`/`SIGTERM` |
 | `migrate up\|down\|status` | Applies every pending migration, rolls back the latest one or lists them |
+| `invites create [--expires-in 168h] [--note text]` | Creates a single-use sign-up invite and prints its code once |
 | `help` | Lists the commands |
 
 ## Configuration
@@ -54,13 +55,48 @@ Configuration comes only from environment variables. The process refuses to boot
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn` or `error` |
 | `LOG_FORMAT` | no | `json` in production, `text` otherwise | `json` or `text` |
 | `SHUTDOWN_TIMEOUT` | no | `15s` | Time allowed for in-flight requests on shutdown |
+| `RATE_LIMIT_PER_MINUTE` | no | `120` | Requests per minute for each API key |
+| `UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE` | no | `10` | Sign-ups and failed authentications per minute for each client IP |
+| `TRUST_PROXY_HEADERS` | no | `false` | Read the client IP from `X-Real-IP`/`X-Forwarded-For`; enable only behind a proxy that overwrites them |
 
 ## HTTP endpoints
 
-| Route | Purpose |
-| --- | --- |
-| `GET /healthz` | Liveness; never touches the database |
-| `GET /readyz` | Readiness; `503` when Postgres does not answer within 2s |
+| Route | Auth | Purpose |
+| --- | --- | --- |
+| `GET /healthz` | none | Liveness; never touches the database |
+| `GET /readyz` | none | Readiness; `503` when Postgres does not answer within 2s |
+| `POST /v1/accounts` | invite code | Creates an account and returns its first `admin` key |
+| `GET /v1/whoami` | any key | Describes the account and the calling key |
+| `GET /v1/api-keys` | `admin` | Lists the account's keys, never their tokens |
+| `POST /v1/api-keys` | `admin` | Creates a key with the given scopes and returns its token once |
+| `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately; the last active `admin` key cannot be revoked |
+
+Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
+
+### Accounts and API keys
+
+1. The operator creates an invite: `lastro invites create --note "for Rudolfo"`. Invites are single use and expire (7 days by default).
+2. Whoever holds the code signs up:
+
+   ```bash
+   curl -X POST https://<host>/v1/accounts \
+     -d '{"invite_code": "inv_…", "name": "Rudolfo"}'
+   ```
+
+   The response carries an `admin` key. Store it safely: the token is shown only once.
+3. The admin key creates a key for each client with only the scopes it needs, for example `expenses:read` and `expenses:write` for Case and `wallet:ingest` for the Android app:
+
+   ```bash
+   curl -X POST https://<host>/v1/api-keys \
+     -H "Authorization: Bearer lst_…" \
+     -d '{"name": "case", "scopes": ["expenses:read", "expenses:write"]}'
+   ```
+
+Clients send `Authorization: Bearer <token>`. Scopes are `admin`, `expenses:read`, `expenses:write`, `wallet:ingest` and `statements:write`.
+
+Tokens look like `lst_<key id>_<secret>`. Only the SHA-256 of the 32-byte secret is stored and it is compared in constant time; revoked keys fail on the next request. Requests without a valid token get `401` and requests without the scope get `403`, both without details. Each key and each client IP (for sign-ups and failed authentications) are rate limited and get `429` with `Retry-After`.
+
+Every authenticated request is audited in `api_requests` (key, method, route, status, duration and request ID, never headers or bodies) and refreshes the key's `last_used_at`.
 
 Every response carries an `X-Request-ID` header. A valid incoming ID is kept; otherwise a UUIDv7 is generated. Access logs record method, route, status, duration and request ID, never headers or bodies.
 
@@ -70,6 +106,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | --- | --- |
 | `cmd/lastro` | Entry point |
 | `internal/cli` | Subcommands |
+| `internal/accounts` | Accounts, invites, API keys, scopes and request audit |
 | `internal/config` | Typed configuration loaded from the environment |
 | `internal/httpapi` | Routes, handlers and middleware |
 | `internal/logging` | `log/slog` setup |
