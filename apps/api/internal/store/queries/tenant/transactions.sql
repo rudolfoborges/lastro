@@ -56,3 +56,37 @@ SELECT EXISTS (
       AND e.status = 'confirmed'
       AND o.source = @source
 );
+
+-- name: ListTransactions :many
+SELECT t.*
+FROM transactions t
+LEFT JOIN payment_methods pm ON pm.account_id = t.account_id AND pm.id = t.payment_method_id
+WHERE t.account_id = @account_id
+  AND t.status = ANY (@statuses::text[])
+  AND (sqlc.narg(from_date)::date IS NULL OR t.occurred_on >= sqlc.narg(from_date)::date)
+  AND (sqlc.narg(to_date)::date IS NULL OR t.occurred_on <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(payment_kind)::text IS NULL OR pm.kind = sqlc.narg(payment_kind)::text)
+  AND (
+      sqlc.narg(category_code)::text IS NULL
+      OR EXISTS (
+          SELECT
+          FROM category_allocations a
+          JOIN categories c ON c.account_id = a.account_id AND c.id = a.category_id
+          WHERE a.account_id = t.account_id AND a.transaction_id = t.id AND a.superseded_at IS NULL
+            AND c.code = sqlc.narg(category_code)::text
+      )
+      OR (
+          sqlc.narg(category_code)::text = 'unidentified'
+          AND NOT EXISTS (
+              SELECT FROM category_allocations a
+              WHERE a.account_id = t.account_id AND a.transaction_id = t.id AND a.superseded_at IS NULL
+          )
+      )
+  )
+ORDER BY t.occurred_on DESC NULLS LAST, t.created_at DESC, t.id DESC
+LIMIT @max_rows OFFSET @skip_rows;
+
+-- name: ListPaymentMethods :many
+SELECT *
+FROM payment_methods
+WHERE account_id = @account_id;

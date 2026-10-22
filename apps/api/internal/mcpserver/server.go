@@ -67,6 +67,7 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerCatalog()
 	s.registerClarifications()
 	s.registerExpenses()
+	s.registerTransactions()
 	return s
 }
 

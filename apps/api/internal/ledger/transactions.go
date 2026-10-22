@@ -24,9 +24,11 @@ const (
 
 type TransactionDetail struct {
 	Transaction
-	Categories []Allocation
-	Evidence   []Evidence
-	Fields     []FieldSource
+	Categories     []Allocation
+	Evidence       []Evidence
+	Fields         []FieldSource
+	History        []Revision
+	Clarifications []Clarification
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
@@ -136,11 +138,30 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 	if err != nil {
 		return TransactionDetail{}, err
 	}
+	history, err := t.history(id)
+	if err != nil {
+		return TransactionDetail{}, err
+	}
+	rows, err := t.q.OpenTransactionClarifications(t.ctx, tenantdb.OpenTransactionClarificationsParams{AccountID: t.accountID, TransactionID: &id})
+	if err != nil {
+		return TransactionDetail{}, fmt.Errorf("list open clarifications: %w", err)
+	}
+	clarifications := make([]Clarification, 0, len(rows))
+	for _, row := range rows {
+		clarification, err := t.withTarget(row)
+		if err != nil {
+			return TransactionDetail{}, err
+		}
+		clarification.Transaction = nil
+		clarifications = append(clarifications, clarification)
+	}
 	return TransactionDetail{
-		Transaction: transaction,
-		Categories:  EffectiveAllocations(transaction, allocations),
-		Evidence:    evidence,
-		Fields:      fields,
+		Transaction:    transaction,
+		Categories:     EffectiveAllocations(transaction, allocations),
+		Evidence:       evidence,
+		Fields:         fields,
+		History:        history,
+		Clarifications: clarifications,
 	}, nil
 }
 

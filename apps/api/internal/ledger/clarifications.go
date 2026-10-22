@@ -429,3 +429,10 @@ func describe(transaction Transaction) string {
 	}
 	return fmt.Sprintf("\"%s\" (%s, %s)", transaction.Description, transaction.Amount.Format(), when)
 }
+
+func FieldLabel(field Field) string {
+	if label, ok := fieldLabels[field]; ok {
+		return label
+	}
+	return string(field)
+}
