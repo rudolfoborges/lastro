@@ -165,6 +165,14 @@ Queries are split in two sqlc packages:
 
 `TenantTx` runs `SET LOCAL ROLE lastro_app` and `set_config('app.account_id', …, true)` at the start of the transaction. The role is created by the first migration with `SELECT`, `INSERT` and `UPDATE` as default privileges on new tables; it has no `DELETE` and does not bypass RLS.
 
+### Corrections and history
+
+Every change to a transaction goes through `ledger.Service.Correct` (or `Void`), which writes one row per changed field to the append-only `revisions` table: old and new value, the mandatory reason, the author (`user`, `agent`, `rule` or `system`), the credential that acted and, for automatic changes, the observation behind them. The transaction's creation is the first revision, so `History` tells the whole story in order.
+
+Fields Rudolfo changed are marked `confirmed_by_user` in `field_provenance`. Later changes by Case, rules or the system (a new statement, a notification, a reconciliation) never overwrite them: `Correct` applies the other fields and returns the locked ones as conflicts, which become clarifications. The original value always stays in the observation.
+
+Changing the payment method re-applies the status rule: credit card purchases stay `provisional` until a statement line confirms them; Pix, debit card and cash reported by Rudolfo are `confirmed`; an unknown method is `provisional`. A voided transaction is kept with status `voided` and cannot change anymore.
+
 ### Idempotency
 
 Every write submitted by a client carries a key chosen by the client (for Case, the `request_id` it generates once per expense and reuses on every retry). `idempotency.Do` runs inside the same tenant transaction as the write:

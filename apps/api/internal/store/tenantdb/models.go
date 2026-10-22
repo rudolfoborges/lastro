@@ -110,6 +110,21 @@ type PaymentMethod struct {
 	CreatedAt time.Time
 }
 
+type Revision struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	EntityType    string
+	EntityID      uuid.UUID
+	Field         string
+	OldValue      []byte
+	NewValue      []byte
+	Reason        string
+	Author        string
+	ActorRef      *string
+	ObservationID *uuid.UUID
+	CreatedAt     time.Time
+}
+
 type Transaction struct {
 	ID                     uuid.UUID
 	AccountID              uuid.UUID

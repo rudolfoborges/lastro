@@ -28,11 +28,11 @@ type TransactionDetail struct {
 	Fields   []FieldSource
 }
 
-func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction) (Transaction, error) {
+func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
 	var created Transaction
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
-		created, err = t.createTransaction(observationID, in)
+		created, err = t.createTransaction(observationID, in, actor)
 		return err
 	})
 	return created, err
@@ -48,12 +48,13 @@ func (s *Service) GetTransaction(ctx context.Context, accountID, id uuid.UUID) (
 	return detail, err
 }
 
-func (t *tx) createTransaction(observationID uuid.UUID, in NewTransaction) (Transaction, error) {
+func (t *tx) createTransaction(observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
 	in, err := normalizeNewTransaction(in)
 	if err != nil {
 		return Transaction{}, err
 	}
-	if _, err := t.q.GetObservation(t.ctx, tenantdb.GetObservationParams{AccountID: t.accountID, ID: observationID}); err != nil {
+	observation, err := t.q.GetObservation(t.ctx, tenantdb.GetObservationParams{AccountID: t.accountID, ID: observationID})
+	if err != nil {
 		return Transaction{}, fmt.Errorf("observation %s: %w", observationID, notFound(err))
 	}
 	var method *PaymentMethod
@@ -107,7 +108,12 @@ func (t *tx) createTransaction(observationID uuid.UUID, in NewTransaction) (Tran
 			return Transaction{}, err
 		}
 	}
-	return toTransaction(row, method), nil
+	created := toTransaction(row, method)
+	actor.ObservationID = &observationID
+	if err := t.recordRevision(row.ID, fieldCreated, jsonValue(nil), snapshot(created), creationReasons[Source(observation.Source)], actor); err != nil {
+		return Transaction{}, err
+	}
+	return created, nil
 }
 
 func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
