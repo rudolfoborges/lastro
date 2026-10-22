@@ -7,7 +7,7 @@ Personal expense tracking reached through Case, the user's AI assistant, over MC
 | Path | Contents |
 | --- | --- |
 | `apps/api` | Go service (`lastro` binary): HTTP API, migrations and CLI. See [`apps/api/README.md`](apps/api/README.md) |
-| `docs` | Product requirements and the [operations runbook](docs/operations.md) |
+| `docs` | Product requirements, the [operations runbook](docs/operations.md) and the [Case integration kit](docs/case-integration.md) |
 | `.railway/railway.ts` | Production infrastructure on Railway (IaC) |
 | `compose.yaml` | Local environment |
 

@@ -15,6 +15,13 @@ erDiagram
     payment_methods |o--o{ transactions : pays
     payment_methods |o--o{ observation_interpretations : mentions
     transactions |o--o{ transactions : "refund_of / merged_into"
+    accounts ||--o{ categories : classifies
+    transactions ||--o{ category_allocations : "is split into"
+    categories ||--o{ category_allocations : receives
+    transactions |o--o{ clarifications : "raises"
+    observations |o--o{ clarifications : "raises"
+    transactions ||--o{ revisions : "changes are recorded in"
+    accounts ||--o{ idempotency_keys : "dedupes submissions with"
 
     payment_methods {
         uuid id PK
@@ -87,7 +94,51 @@ erDiagram
         uuid observation_id FK
         bool confirmed_by_user
     }
+    categories {
+        uuid id PK
+        text code "English, unique per account"
+        text label "pt-BR display name"
+        timestamptz archived_at
+    }
+    category_allocations {
+        uuid id PK
+        uuid transaction_id FK
+        uuid category_id FK
+        bigint amount_minor "current parts add up to the transaction"
+        text status "suggested, confirmed"
+        text origin "agent, rule, user"
+        timestamptz superseded_at
+    }
+    clarifications {
+        uuid id PK
+        text kind "purpose_unknown, category_unknown, field_conflict, ..."
+        uuid transaction_id FK
+        uuid observation_id FK
+        text dedup_key "unique among open questions"
+        text question "pt-BR"
+        jsonb context
+        text status "open, resolved, dismissed"
+    }
+    revisions {
+        uuid id PK
+        text entity_type "transaction, clarification"
+        uuid entity_id
+        text field
+        jsonb old_value
+        jsonb new_value
+        text reason
+        text author "user, agent, rule, system"
+        uuid observation_id FK
+    }
+    idempotency_keys {
+        text operation PK
+        text key PK
+        bytea request_hash
+        jsonb response
+    }
 ```
+
+Outside the diagram: `tool_calls` and `api_requests` audit every MCP tool call and authenticated request; `oauth_clients`, `oauth_grants`, `oauth_authorization_codes` and `oauth_tokens` hold the OAuth authorization server's state (only grants are visible to the account, for listing and revoking).
 
 ## Rules the schema enforces
 
@@ -97,4 +148,6 @@ erDiagram
 - **Amounts are positive magnitudes.** The `nature` gives the direction: `credit` and `refund` bring money back; the others take it out. Foreign purchases keep the original amount and currency next to the charged one; the two never share a currency.
 - **Dates keep their precision.** `occurred_at` exists only for `exact`; `occurred_on` is null only for `unknown`; `month` dates sit on the first day of the month.
 - **Merges keep both sides.** `status = 'merged'` exactly when `merged_into_id` is set, so the merged transaction and its evidence remain queryable and the merge can be undone.
+- **Allocations add up.** Deferred constraint triggers refuse, at commit, any state in which the current `category_allocations` of a transaction do not add up to its amount.
+- **History is append-only.** `revisions`, `idempotency_keys`, `tool_calls` and `api_requests` have no `UPDATE` for the application role.
 - **Field provenance.** For each field of a transaction, `field_provenance` names the observation it came from and whether Rudolfo confirmed it; confirmed fields are protected from automatic overwrites. Categories carry their own status and origin in `category_allocations`.
