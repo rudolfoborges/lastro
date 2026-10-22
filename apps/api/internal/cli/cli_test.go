@@ -89,3 +89,25 @@ func TestMigrateUpThenStatusReportsAppliedMigrations(t *testing.T) {
 		t.Errorf("migrate status output = %q, want every migration applied", stdout)
 	}
 }
+
+func TestInvitesCreatePrintsASingleUseCode(t *testing.T) {
+	vars := map[string]string{"DATABASE_URL": storetest.MigratedDatabaseURL(t)}
+
+	stdout, _, err := run(t, []string{"invites", "create", "--expires-in", "1h", "--note", "Rudolfo"}, vars)
+
+	if err != nil {
+		t.Fatalf("invites create error = %v", err)
+	}
+	if !strings.Contains(stdout, "invite code: inv_") || !strings.Contains(stdout, "expires at:") {
+		t.Errorf("invites create output = %q", stdout)
+	}
+}
+
+func TestInvitesRequiresTheCreateActionAndValidFlags(t *testing.T) {
+	for _, args := range [][]string{{"invites"}, {"invites", "list"}, {"invites", "create", "--expires-in", "soon"}} {
+		_, _, err := run(t, args, nil)
+		if !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("Run(%v) error = %v, want usage error", args, err)
+		}
+	}
+}

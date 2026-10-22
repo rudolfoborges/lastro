@@ -23,3 +23,17 @@ func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
 	return i, err
 }
+
+const lockAccount = `-- name: LockAccount :one
+SELECT id
+FROM accounts
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAccount, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}

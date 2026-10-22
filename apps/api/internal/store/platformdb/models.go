@@ -15,3 +15,36 @@ type Account struct {
 	Name      string
 	CreatedAt time.Time
 }
+
+type ApiKey struct {
+	ID         uuid.UUID
+	AccountID  uuid.UUID
+	Name       string
+	TokenHash  []byte
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
+}
+
+type ApiRequest struct {
+	ID         uuid.UUID
+	AccountID  uuid.UUID
+	ApiKeyID   uuid.UUID
+	RequestID  string
+	Method     string
+	Route      string
+	Status     int32
+	DurationMs int32
+	OccurredAt time.Time
+}
+
+type Invite struct {
+	ID         uuid.UUID
+	CodeHash   []byte
+	Note       *string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	RedeemedAt *time.Time
+	AccountID  *uuid.UUID
+}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
 	"github.com/rudolfoborges/lastro/apps/api/internal/httpapi"
 	"github.com/rudolfoborges/lastro/apps/api/internal/logging"
@@ -28,8 +29,14 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 	defer db.Close()
 
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           httpapi.NewHandler(httpapi.Deps{Logger: logger, Database: db}),
+		Addr: fmt.Sprintf(":%d", cfg.Port),
+		Handler: httpapi.NewHandler(httpapi.Deps{
+			Logger:            logger,
+			Database:          db,
+			Accounts:          accounts.NewService(db),
+			RateLimits:        cfg.RateLimits,
+			TrustProxyHeaders: cfg.TrustProxyHeaders,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),

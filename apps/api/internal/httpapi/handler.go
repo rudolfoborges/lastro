@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/config"
 )
 
 const readinessTimeout = 2 * time.Second
@@ -15,14 +17,39 @@ type Pinger interface {
 }
 
 type Deps struct {
-	Logger   *slog.Logger
-	Database Pinger
+	Logger            *slog.Logger
+	Database          Pinger
+	Accounts          *accounts.Service
+	RateLimits        config.RateLimits
+	TrustProxyHeaders bool
+}
+
+type api struct {
+	logger            *slog.Logger
+	accounts          *accounts.Service
+	keyLimits         *limiterSet
+	clientLimits      *limiterSet
+	trustProxyHeaders bool
 }
 
 func NewHandler(deps Deps) http.Handler {
+	a := &api{
+		logger:            deps.Logger,
+		accounts:          deps.Accounts,
+		keyLimits:         newLimiterSet(deps.RateLimits.PerKeyPerMinute),
+		clientLimits:      newLimiterSet(deps.RateLimits.UnauthenticatedPerMinute),
+		trustProxyHeaders: deps.TrustProxyHeaders,
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /readyz", handleReadyz(deps.Logger, deps.Database))
+
+	mux.HandleFunc("POST /v1/accounts", a.handleSignUp)
+	mux.HandleFunc("GET /v1/whoami", a.authenticated("", a.handleWhoami))
+	mux.HandleFunc("GET /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleListKeys))
+	mux.HandleFunc("POST /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleCreateKey))
+	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeKey))
 
 	return withRequestID(withAccessLog(deps.Logger)(withRecover(deps.Logger)(mux)))
 }
@@ -45,14 +72,4 @@ func handleReadyz(logger *slog.Logger, database Pinger) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
-}
-
-func writeError(w http.ResponseWriter, status int, code string) {
-	writeJSON(w, status, map[string]string{"error": code})
 }
