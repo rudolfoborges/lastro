@@ -14,6 +14,7 @@ type Account struct {
 	ID        uuid.UUID
 	Name      string
 	CreatedAt time.Time
+	Timezone  string
 }
 
 type ApiKey struct {

@@ -13,6 +13,7 @@ import (
 type accountJSON struct {
 	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
+	Timezone  string    `json:"timezone"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -27,7 +28,7 @@ type apiKeyJSON struct {
 }
 
 func toAccountJSON(account accounts.Account) accountJSON {
-	return accountJSON{ID: account.ID, Name: account.Name, CreatedAt: account.CreatedAt.UTC()}
+	return accountJSON{ID: account.ID, Name: account.Name, Timezone: account.Timezone, CreatedAt: account.CreatedAt.UTC()}
 }
 
 func toAPIKeyJSON(key accounts.APIKey) apiKeyJSON {
@@ -88,6 +89,21 @@ func (a *api) handleWhoami(w http.ResponseWriter, r *http.Request, principal acc
 		"account": toAccountJSON(account),
 		"api_key": toAPIKeyJSON(key),
 	})
+}
+
+func (a *api) handleUpdateAccount(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	account, err := a.accounts.SetTimezone(r.Context(), principal.AccountID, body.Timezone)
+	if err != nil {
+		a.writeAccountsError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"account": toAccountJSON(account)})
 }
 
 func (a *api) handleListKeys(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {

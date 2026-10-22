@@ -289,3 +289,22 @@ func TestTokensNeverReachTheLogs(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminKeysChangeTheAccountTimezone(t *testing.T) {
+	api := newTestAPI(t, config.RateLimits{})
+	_, admin := api.signUp("Rudolfo")
+	_, reader := api.createKey(admin, "case", "expenses:read")
+
+	if got := field(api.do(http.MethodGet, "/v1/whoami", admin, nil).body, "account", "timezone"); got != "America/Sao_Paulo" {
+		t.Errorf("whoami timezone = %q, want America/Sao_Paulo", got)
+	}
+	assertStatus(t, api.do(http.MethodPatch, "/v1/account", reader, map[string]string{"timezone": "Europe/Lisbon"}), http.StatusForbidden, "forbidden")
+	assertStatus(t, api.do(http.MethodPatch, "/v1/account", admin, map[string]string{"timezone": "Brasilia"}), http.StatusBadRequest, "invalid_request")
+
+	res := api.do(http.MethodPatch, "/v1/account", admin, map[string]string{"timezone": "Europe/Lisbon"})
+
+	assertStatus(t, res, http.StatusOK, "")
+	if field(res.body, "account", "timezone") != "Europe/Lisbon" {
+		t.Errorf("PATCH /v1/account = %s", res.raw)
+	}
+}

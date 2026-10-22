@@ -14,7 +14,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (id, name)
 VALUES ($1, $2)
-RETURNING id, name, created_at
+RETURNING id, name, created_at, timezone
 `
 
 type CreateAccountParams struct {
@@ -25,6 +25,11 @@ type CreateAccountParams struct {
 func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
 	row := q.db.QueryRow(ctx, createAccount, arg.ID, arg.Name)
 	var i Account
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Timezone,
+	)
 	return i, err
 }
