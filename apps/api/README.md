@@ -115,6 +115,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/cli` | Subcommands |
 | `internal/accounts` | Accounts, invites, API keys, scopes, account settings and request audit |
 | `internal/calendar` | Local dates, date precision and source, `now`/`today`/`yesterday` and time zones |
+| `internal/redaction` | Masking of card numbers and CPFs and removal of codes, passwords and tokens in payloads and logs |
 | `internal/money` | Amounts in minor units: canonical parsing, pt-BR formatting and same-currency arithmetic |
 | `internal/config` | Typed configuration loaded from the environment |
 | `internal/httpapi` | Routes, handlers and middleware |
@@ -165,6 +166,16 @@ Queries are split in two sqlc packages:
 Tests that touch Postgres use `storetest.MigratedDatabaseURL(t)` or `storetest.EmptyDatabaseURL(t)`, which create a uniquely named database for the test and drop it afterwards. Migrated databases are cloned from a template built once per migration set, so each test starts from a clean schema in milliseconds.
 
 They need `TEST_DATABASE_URL` pointing at a Postgres server where the user can create databases (the `lastro_test` database of the local compose or the CI service). Without it the tests are skipped locally and fail in CI.
+
+## Sensitive data
+
+Every free-text value that reaches the database (conversation text, notification text, statement excerpts sent by Case) goes through `redaction.Text` or `redaction.Values` before it is persisted, and every log line goes through `redaction.NewHandler`:
+
+- card numbers (13 to 19 digits, optionally grouped by spaces or hyphens, with a valid Luhn check digit) keep only the last four digits;
+- valid CPFs are masked completely;
+- authentication codes, OTPs, CVVs, passwords and tokens (labelled values such as `código: 482913`, `Bearer …`, `lst_…` keys and JWT-like strings) are replaced by `[redacted]`.
+
+The redaction returns what it found as `{kind, count}` pairs, which are stored next to the evidence for audit; the redacted values themselves are never kept. Only Google Wallet notifications (`redaction.AllowedNotificationPackage`) are accepted from the Android app.
 
 ## Lint conventions
 

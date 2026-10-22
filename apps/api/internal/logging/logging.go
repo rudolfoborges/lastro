@@ -5,12 +5,14 @@ import (
 	"log/slog"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/redaction"
 )
 
 func New(w io.Writer, format config.LogFormat, level slog.Level) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
+	var handler slog.Handler = slog.NewTextHandler(w, opts)
 	if format == config.LogFormatJSON {
-		return slog.New(slog.NewJSONHandler(w, opts))
+		handler = slog.NewJSONHandler(w, opts)
 	}
-	return slog.New(slog.NewTextHandler(w, opts))
+	return slog.New(redaction.NewHandler(handler))
 }
