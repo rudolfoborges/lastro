@@ -40,7 +40,7 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
    railway domain status <host> --service api   # CNAME target and the _railway-verify TXT record
    ```
 
-   Create both DNS records at the zone's provider. The certificate is issued once Railway sees them. Production uses `lastro.code04.dev`; Case and the Android app use this host for `/mcp` and the wallet webhook.
+   Create both DNS records at the zone's provider, **DNS only** (no Cloudflare proxy: it would terminate TLS, see the traffic in clear and hide the client IP from the rate limit). The certificate is issued once Railway sees them. Production uses `lastro.code04.dev`; Case and the Android app use this host for `/mcp` and the wallet webhook.
 5. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
 6. Create the first account:
 

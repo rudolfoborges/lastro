@@ -29,15 +29,16 @@ type ApiKey struct {
 }
 
 type ApiRequest struct {
-	ID         uuid.UUID
-	AccountID  uuid.UUID
-	ApiKeyID   uuid.UUID
-	RequestID  string
-	Method     string
-	Route      string
-	Status     int32
-	DurationMs int32
-	OccurredAt time.Time
+	ID           uuid.UUID
+	AccountID    uuid.UUID
+	ApiKeyID     *uuid.UUID
+	RequestID    string
+	Method       string
+	Route        string
+	Status       int32
+	DurationMs   int32
+	OccurredAt   time.Time
+	OauthGrantID *uuid.UUID
 }
 
 type Category struct {
@@ -105,6 +106,54 @@ type Invite struct {
 	ExpiresAt  time.Time
 	RedeemedAt *time.Time
 	AccountID  *uuid.UUID
+}
+
+type OauthAuthorizationCode struct {
+	ID            uuid.UUID
+	CodeHash      []byte
+	GrantID       uuid.UUID
+	ClientID      uuid.UUID
+	RedirectUri   string
+	CodeChallenge string
+	Resource      string
+	ExpiresAt     time.Time
+	UsedAt        *time.Time
+	CreatedAt     time.Time
+}
+
+type OauthClient struct {
+	ID                uuid.UUID
+	ClientID          string
+	Registration      string
+	ClientName        *string
+	RedirectUris      []string
+	SecretHash        []byte
+	MetadataFetchedAt *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type OauthGrant struct {
+	ID         uuid.UUID
+	AccountID  uuid.UUID
+	ClientID   uuid.UUID
+	ApiKeyID   uuid.UUID
+	Scopes     []string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
+}
+
+type OauthToken struct {
+	ID        uuid.UUID
+	GrantID   uuid.UUID
+	Kind      string
+	TokenHash []byte
+	Scopes    []string
+	Resource  string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	CreatedAt time.Time
 }
 
 type Observation struct {

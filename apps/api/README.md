@@ -65,12 +65,23 @@ Configuration comes only from environment variables. The process refuses to boot
 | `RATE_LIMIT_PER_MINUTE` | no | `120` | Requests per minute for each API key |
 | `UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE` | no | `10` | Sign-ups and failed authentications per minute for each client IP |
 | `TRUST_PROXY_HEADERS` | no | `false` | Read the client IP from `X-Real-IP`/`X-Forwarded-For`; enable only behind a proxy that overwrites them |
+| `PUBLIC_BASE_URL` | in production | `http://localhost:$PORT` | Public origin (`https://lastro.code04.dev`): the OAuth issuer, and `$PUBLIC_BASE_URL/mcp` is the resource tokens are bound to |
+| `OAUTH_REDIRECT_HOSTS` | no | `chatgpt.com` | Hosts OAuth clients may redirect to (HTTPS only; `localhost` is also accepted outside production) |
+| `OAUTH_METADATA_HOSTS` | no | `chatgpt.com` | Hosts allowed to serve client ID metadata documents (CIMD) |
 
 ## HTTP endpoints
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `/mcp` | any key | MCP over Streamable HTTP (stateless, JSON responses); each tool checks its own scope |
+| `/mcp` | any key or OAuth token | MCP over Streamable HTTP (stateless, JSON responses); each tool checks its own scope |
+| `GET /.well-known/oauth-protected-resource` | none | Protected resource metadata for `/mcp` (RFC 9728) |
+| `GET /.well-known/oauth-authorization-server` | none | Authorization server metadata (RFC 8414) |
+| `POST /oauth/register` | none | Dynamic client registration (RFC 7591) |
+| `GET`/`POST /oauth/authorize` | admin key in the form | Consent page and decision (authorization code + PKCE S256) |
+| `POST /oauth/token` | client | Authorization code and refresh token grants |
+| `POST /oauth/revoke` | client | Revokes the grant of a token (RFC 7009) |
+| `GET /v1/oauth/grants` | `admin` | Lists the clients authorized on the account |
+| `POST /v1/oauth/grants/{id}/revoke` | `admin` | Revokes a client's access immediately |
 | `GET /healthz` | none | Liveness; never touches the database |
 | `GET /readyz` | none | Readiness; `503` when Postgres does not answer within 2s |
 | `POST /v1/accounts` | invite code | Creates an account and returns its first `admin` key |
@@ -223,6 +234,18 @@ A key is therefore only ever stored for work that was committed, and a response 
 Tests that touch Postgres use `storetest.MigratedDatabaseURL(t)` or `storetest.EmptyDatabaseURL(t)`, which create a uniquely named database for the test and drop it afterwards. Migrated databases are cloned from a template built once per migration set, so each test starts from a clean schema in milliseconds.
 
 They need `TEST_DATABASE_URL` pointing at a Postgres server where the user can create databases (the `lastro_test` database of the local compose or the CI service). Without it the tests are skipped locally and fail in CI.
+
+## OAuth for Case
+
+ChatGPT, where Case runs, only connects to MCP servers through OAuth 2.1, so Lastro is its own authorization server (`internal/oauth`). There is no password: Rudolfo proves the account is his by pasting his `admin` API key on the consent page.
+
+1. ChatGPT calls `/mcp`, gets `401` with `WWW-Authenticate: Bearer …, resource_metadata="…/.well-known/oauth-protected-resource"` and discovers the authorization server.
+2. It identifies itself with a **client ID metadata document** (CIMD, `client_id=https://chatgpt.com/oauth/client.json`), fetched over HTTPS from an allowed host with a timeout, a size cap, no redirects and no private addresses, and cached for an hour. **Dynamic client registration** (`/oauth/register`) is the fallback; it only accepts redirect URIs on `OAUTH_REDIRECT_HOSTS`.
+3. `/oauth/authorize` validates client, exact redirect URI, `response_type=code`, PKCE `S256` and `resource`, then shows the consent page (pt-BR, no framing, strict CSP). Rudolfo pastes the admin key and picks the scopes; the server creates a **grant** bound to the account and redirects with `code`, `state` and `iss` (RFC 9207).
+4. `/oauth/token` exchanges the code (single use, one minute, PKCE verified; a replayed code revokes the grant) for an access token (`lat_…`, one hour) and a refresh token (`lrt_…`, 30 days). Refresh tokens rotate; reusing an old one revokes the whole grant.
+5. Access tokens only work on `/mcp` (their audience); `/v1` keeps accepting API keys only. Grants are listed and revoked with the admin key at `/v1/oauth/grants`.
+
+Only hashes of codes, tokens and client secrets are stored; none of them reach the logs. Every request made with a grant is audited like an API key request.
 
 ## MCP server
 

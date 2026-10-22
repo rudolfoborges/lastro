@@ -8,6 +8,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/oauth"
 )
 
 const readinessTimeout = 2 * time.Second
@@ -23,6 +24,7 @@ type Deps struct {
 	RateLimits        config.RateLimits
 	TrustProxyHeaders bool
 	MCP               http.Handler
+	OAuth             *oauth.Server
 }
 
 type api struct {
@@ -31,6 +33,7 @@ type api struct {
 	keyLimits         *limiterSet
 	clientLimits      *limiterSet
 	trustProxyHeaders bool
+	oauth             *oauth.Server
 }
 
 func NewHandler(deps Deps) http.Handler {
@@ -40,6 +43,7 @@ func NewHandler(deps Deps) http.Handler {
 		keyLimits:         newLimiterSet(deps.RateLimits.PerKeyPerMinute),
 		clientLimits:      newLimiterSet(deps.RateLimits.UnauthenticatedPerMinute),
 		trustProxyHeaders: deps.TrustProxyHeaders,
+		oauth:             deps.OAuth,
 	}
 
 	mux := http.NewServeMux()
@@ -55,6 +59,11 @@ func NewHandler(deps Deps) http.Handler {
 
 	if deps.MCP != nil {
 		mux.Handle("/mcp", a.mcpEndpoint(deps.MCP))
+	}
+	if deps.OAuth != nil {
+		deps.OAuth.Routes(mux, a.limitedByClient)
+		mux.HandleFunc("GET /v1/oauth/grants", a.authenticated(accounts.ScopeAdmin, a.handleListGrants))
+		mux.HandleFunc("POST /v1/oauth/grants/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeGrant))
 	}
 
 	return withRequestID(withAccessLog(deps.Logger)(withRecover(deps.Logger)(mux)))

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autorizar acesso ao Lastro</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d2327; --muted: #5f6b73; --line: #d7dde1; --bg: #f7f8f9; --card: #fff; --accent: #1f5f8b; --danger: #a33a2c; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e8ecef; --muted: #a3afb7; --line: #34404a; --bg: #12171b; --card: #1a2127; --accent: #6fb0dd; --danger: #f0907f; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 28rem; margin: 3rem auto; padding: 0 1rem; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+  p { margin: .5rem 0; color: var(--muted); }
+  fieldset { border: 0; padding: 0; margin: 1rem 0; }
+  legend { font-weight: 600; margin-bottom: .25rem; }
+  label { display: block; margin: .35rem 0; }
+  input[type=password] { width: 100%; padding: .6rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+  .error { color: var(--danger); font-weight: 600; }
+  .actions { display: flex; gap: .75rem; margin-top: 1.25rem; }
+  button { flex: 1; padding: .7rem; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  button[value=approve] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+<section>
+  <h1>{{.ClientName}} quer acessar o Lastro</h1>
+  <p>O pedido veio de <strong>{{.ClientHost}}</strong>. Se você não começou essa conexão, recuse.</p>
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+  <form method="post" action="/oauth/authorize" autocomplete="off">
+    <input type="hidden" name="client_id" value="{{.Request.ClientID}}">
+    <input type="hidden" name="redirect_uri" value="{{.Request.RedirectURI}}">
+    <input type="hidden" name="response_type" value="{{.Request.ResponseType}}">
+    <input type="hidden" name="state" value="{{.Request.State}}">
+    <input type="hidden" name="code_challenge" value="{{.Request.CodeChallenge}}">
+    <input type="hidden" name="code_challenge_method" value="{{.Request.CodeChallengeMethod}}">
+    <input type="hidden" name="scope" value="{{.Request.Scope}}">
+    <input type="hidden" name="resource" value="{{.Request.Resource}}">
+    <fieldset>
+      <legend>Permissões</legend>
+      {{range .Scopes}}<label><input type="checkbox" name="scopes" value="{{.Value}}" checked> {{.Label}}</label>{{end}}
+    </fieldset>
+    <label for="api_key"><strong>Chave de administrador da sua conta</strong></label>
+    <input id="api_key" name="api_key" type="password" placeholder="lst_…" spellcheck="false">
+    <small>A chave só confirma que a conta é sua; o aplicativo recebe um acesso próprio, que você pode revogar.</small>
+    <div class="actions">
+      <button type="submit" name="decision" value="deny">Recusar</button>
+      <button type="submit" name="decision" value="approve">Autorizar</button>
+    </div>
+  </form>
+</section>
+</main>
+</body>
+</html>

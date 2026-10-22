@@ -3,17 +3,23 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/oauth"
 )
 
 type authenticatedHandler func(w http.ResponseWriter, r *http.Request, principal accounts.Principal)
 
 func (a *api) authenticated(scope accounts.Scope, next authenticatedHandler) http.HandlerFunc {
+	return a.guard(scope, false, next)
+}
+
+func (a *api) guard(scope accounts.Scope, acceptOAuth bool, next authenticatedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		client := clientIP(r, a.trustProxyHeaders)
 		if a.clientLimits.exhausted(client) {
@@ -22,12 +28,12 @@ func (a *api) authenticated(scope accounts.Scope, next authenticatedHandler) htt
 		}
 		token, ok := bearerToken(r)
 		if !ok {
-			a.rejectUnauthenticated(w, client)
+			a.rejectUnauthenticated(w, client, acceptOAuth)
 			return
 		}
-		principal, err := a.accounts.Authenticate(r.Context(), token)
-		if errors.Is(err, accounts.ErrUnauthenticated) {
-			a.rejectUnauthenticated(w, client)
+		principal, err := a.authenticate(r, token, acceptOAuth)
+		if errors.Is(err, accounts.ErrUnauthenticated) || errors.Is(err, oauth.ErrUnauthenticated) {
+			a.rejectUnauthenticated(w, client, acceptOAuth)
 			return
 		}
 		if err != nil {
@@ -40,7 +46,7 @@ func (a *api) authenticated(scope accounts.Scope, next authenticatedHandler) htt
 		defer a.audit(r, principal, recorder, started)
 
 		switch {
-		case !a.keyLimits.allow(principal.KeyID.String()):
+		case !a.keyLimits.allow(principal.CredentialID().String()):
 			writeRateLimited(recorder, a.keyLimits)
 		case scope != "" && !principal.Has(scope):
 			writeError(recorder, http.StatusForbidden, "forbidden")
@@ -50,10 +56,34 @@ func (a *api) authenticated(scope accounts.Scope, next authenticatedHandler) htt
 	}
 }
 
-func (a *api) rejectUnauthenticated(w http.ResponseWriter, client string) {
+func (a *api) authenticate(r *http.Request, token string, acceptOAuth bool) (accounts.Principal, error) {
+	if strings.HasPrefix(token, oauth.AccessTokenPrefix) {
+		if !acceptOAuth || a.oauth == nil {
+			return accounts.Principal{}, accounts.ErrUnauthenticated
+		}
+		return a.oauth.Authenticate(r.Context(), token)
+	}
+	return a.accounts.Authenticate(r.Context(), token)
+}
+
+func (a *api) rejectUnauthenticated(w http.ResponseWriter, client string, acceptOAuth bool) {
 	a.clientLimits.allow(client)
-	w.Header().Set("WWW-Authenticate", `Bearer realm="lastro"`)
+	challenge := `Bearer realm="lastro"`
+	if acceptOAuth && a.oauth != nil {
+		challenge += fmt.Sprintf(`, resource_metadata=%q`, a.oauth.ResourceMetadataURL())
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
 	writeError(w, http.StatusUnauthorized, "unauthorized")
+}
+
+func (a *api) limitedByClient(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !a.clientLimits.allow(clientIP(r, a.trustProxyHeaders)) {
+			writeRateLimited(w, a.clientLimits)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (a *api) audit(r *http.Request, principal accounts.Principal, recorder *statusRecorder, started time.Time) {
