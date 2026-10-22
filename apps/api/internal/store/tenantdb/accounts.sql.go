@@ -12,7 +12,7 @@ import (
 )
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, name, created_at
+SELECT id, name, created_at, timezone
 FROM accounts
 WHERE id = $1
 `
@@ -20,7 +20,12 @@ WHERE id = $1
 func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error) {
 	row := q.db.QueryRow(ctx, getAccount, id)
 	var i Account
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Timezone,
+	)
 	return i, err
 }
 
@@ -36,4 +41,28 @@ func (q *Queries) LockAccount(ctx context.Context, id uuid.UUID) (uuid.UUID, err
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const updateAccountTimezone = `-- name: UpdateAccountTimezone :one
+UPDATE accounts
+SET timezone = $1
+WHERE id = $2
+RETURNING id, name, created_at, timezone
+`
+
+type UpdateAccountTimezoneParams struct {
+	Timezone string
+	ID       uuid.UUID
+}
+
+func (q *Queries) UpdateAccountTimezone(ctx context.Context, arg UpdateAccountTimezoneParams) (Account, error) {
+	row := q.db.QueryRow(ctx, updateAccountTimezone, arg.Timezone, arg.ID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Timezone,
+	)
+	return i, err
 }

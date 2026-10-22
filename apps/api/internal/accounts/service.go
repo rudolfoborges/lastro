@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/platformdb"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/tenantdb"
@@ -40,6 +41,7 @@ func (e *ValidationError) Error() string {
 type Account struct {
 	ID        uuid.UUID
 	Name      string
+	Timezone  string
 	CreatedAt time.Time
 }
 
@@ -125,7 +127,7 @@ func (s *Service) SignUp(ctx context.Context, inviteCode, accountName string) (A
 		if err != nil {
 			return fmt.Errorf("create account: %w", err)
 		}
-		account = Account{ID: row.ID, Name: row.Name, CreatedAt: row.CreatedAt}
+		account = fromPlatformAccount(row)
 
 		_, err = q.RedeemInvite(ctx, platformdb.RedeemInviteParams{CodeHash: inviteCodeHash(inviteCode), AccountID: &account.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -186,11 +188,44 @@ func (s *Service) Whoami(ctx context.Context, p Principal) (Account, APIKey, err
 		if err != nil {
 			return fmt.Errorf("get API key: %w", err)
 		}
-		account = Account{ID: accountRow.ID, Name: accountRow.Name, CreatedAt: accountRow.CreatedAt}
+		account = fromTenantAccount(accountRow)
 		key = fromTenantKey(keyRow)
 		return nil
 	})
 	return account, key, err
+}
+
+func (s *Service) Location(ctx context.Context, accountID uuid.UUID) (*time.Location, error) {
+	var name string
+	err := s.store.TenantTx(ctx, accountID, func(q *tenantdb.Queries) error {
+		row, err := q.GetAccount(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("get account: %w", err)
+		}
+		name = row.Timezone
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return calendar.LoadTimeZone(name)
+}
+
+func (s *Service) SetTimezone(ctx context.Context, accountID uuid.UUID, timezone string) (Account, error) {
+	name := strings.TrimSpace(timezone)
+	if _, err := calendar.LoadTimeZone(name); err != nil {
+		return Account{}, &ValidationError{Field: "timezone", Message: "must be an IANA time zone such as " + calendar.DefaultTimeZone}
+	}
+	var account Account
+	err := s.store.TenantTx(ctx, accountID, func(q *tenantdb.Queries) error {
+		row, err := q.UpdateAccountTimezone(ctx, tenantdb.UpdateAccountTimezoneParams{ID: accountID, Timezone: name})
+		if err != nil {
+			return fmt.Errorf("update account time zone: %w", err)
+		}
+		account = fromTenantAccount(row)
+		return nil
+	})
+	return account, err
 }
 
 func (s *Service) ListKeys(ctx context.Context, accountID uuid.UUID) ([]APIKey, error) {
@@ -327,6 +362,14 @@ func toScopes(values []string) []Scope {
 		scopes[i] = Scope(value)
 	}
 	return scopes
+}
+
+func fromTenantAccount(row tenantdb.Account) Account {
+	return Account{ID: row.ID, Name: row.Name, Timezone: row.Timezone, CreatedAt: row.CreatedAt}
+}
+
+func fromPlatformAccount(row platformdb.Account) Account {
+	return Account{ID: row.ID, Name: row.Name, Timezone: row.Timezone, CreatedAt: row.CreatedAt}
 }
 
 func fromTenantKey(row tenantdb.ApiKey) APIKey {

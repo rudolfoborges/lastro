@@ -268,3 +268,33 @@ func TestTokensAreStoredOnlyAsHashes(t *testing.T) {
 		t.Errorf("stored token hash has %d bytes; want a 32-byte digest unrelated to the token text", len(stored.TokenHash))
 	}
 }
+
+func TestNewAccountsUseTheSaoPauloTimezone(t *testing.T) {
+	svc := newService(t)
+	account, _ := signUp(t, svc, "Rudolfo")
+
+	if account.Timezone != "America/Sao_Paulo" {
+		t.Errorf("timezone = %q, want America/Sao_Paulo", account.Timezone)
+	}
+	loc, err := svc.Location(t.Context(), account.ID)
+	if err != nil || loc.String() != "America/Sao_Paulo" {
+		t.Errorf("Location() = %v, %v", loc, err)
+	}
+}
+
+func TestSetTimezoneValidatesAndChangesOnlyTheAccount(t *testing.T) {
+	svc := newService(t)
+	alice, _ := signUp(t, svc, "Alice")
+	bob, _ := signUp(t, svc, "Bob")
+
+	_, err := svc.SetTimezone(t.Context(), alice.ID, "Mars/Olympus")
+	assertValidationError(t, err, "timezone")
+
+	updated, err := svc.SetTimezone(t.Context(), alice.ID, " Europe/Lisbon ")
+	if err != nil || updated.Timezone != "Europe/Lisbon" {
+		t.Fatalf("SetTimezone() = %+v, %v", updated, err)
+	}
+	if loc, err := svc.Location(t.Context(), bob.ID); err != nil || loc.String() != "America/Sao_Paulo" {
+		t.Errorf("Bob's Location() = %v, %v, want unchanged", loc, err)
+	}
+}

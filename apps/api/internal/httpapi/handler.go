@@ -47,6 +47,7 @@ func NewHandler(deps Deps) http.Handler {
 
 	mux.HandleFunc("POST /v1/accounts", a.handleSignUp)
 	mux.HandleFunc("GET /v1/whoami", a.authenticated("", a.handleWhoami))
+	mux.HandleFunc("PATCH /v1/account", a.authenticated(accounts.ScopeAdmin, a.handleUpdateAccount))
 	mux.HandleFunc("GET /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleListKeys))
 	mux.HandleFunc("POST /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleCreateKey))
 	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeKey))

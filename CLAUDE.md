@@ -51,6 +51,10 @@ All communication with the user goes through Case, the user's AI assistant, over
 | regra de classificação | `classification_rule` |
 | histórico de alterações | `revision` |
 | acompanhamento automático / cobertura / lacuna | `tracking` / `coverage` / `gap` |
+| precisão da data / origem da data | `date_precision` (`exact`, `day`, `month`, `unknown`) / `date_source` (`stated`, `inferred`, `document`) |
+| "agora", "hoje", "ontem" | `date_reference` (`now`, `today`, `yesterday`) |
+| fuso horário da conta | `timezone` |
+| valor em centavos / moeda | `amount_minor` / `currency` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
