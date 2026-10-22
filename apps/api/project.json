@@ -81,6 +81,32 @@
         "cwd": "apps/api",
         "command": "go tool -modfile=tools.mod govulncheck ./..."
       }
+    },
+    "sqlc": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go tool -modfile=tools.mod sqlc generate"
+      }
+    },
+    "sqlc-check": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default"
+      ],
+      "options": {
+        "cwd": "apps/api",
+        "command": "go tool -modfile=tools.mod sqlc diff"
+      }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run ./cmd/lastro migrate",
+        "forwardAllArgs": true
+      }
     }
   }
 }

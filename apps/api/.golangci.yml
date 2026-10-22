@@ -14,6 +14,11 @@ linters:
     - unconvert
     - usestdlibvars
   settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
     misspell:
       locale: US
     staticcheck:
@@ -25,6 +30,10 @@ linters:
         - -ST1022
   exclusions:
     generated: strict
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
 
 formatters:
   enable:
