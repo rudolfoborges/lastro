@@ -201,3 +201,25 @@ func TestClearingAFieldAndRepeatingAValueAreHandled(t *testing.T) {
 		t.Errorf("History(unknown) error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestARetriedCorrectionWithTheSameRequestIsAppliedOnce(t *testing.T) {
+	f := newFixture(t)
+	created, _ := f.transaction("message-1")
+	actor := rudolfo
+	actor.RequestID = "fix-amount-1"
+
+	for range 2 {
+		correction, err := f.ledger.Correct(t.Context(), f.account, created.ID, ledger.Patch{Amount: ptr(brl(1000))}, "valor errado", actor)
+		if err != nil || correction.Transaction.Amount != brl(1000) {
+			t.Fatalf("Correct() = %+v, %v", correction, err)
+		}
+	}
+	history, err := f.ledger.History(t.Context(), f.account, created.ID)
+	if err != nil || len(history) != 2 {
+		t.Errorf("history = %+v, %v; want creation and one amount revision", history, err)
+	}
+	_, err = f.ledger.Correct(t.Context(), f.account, created.ID, ledger.Patch{Amount: ptr(brl(2000))}, "valor errado", actor)
+	if err == nil {
+		t.Error("reusing the request ID with other content succeeded")
+	}
+}

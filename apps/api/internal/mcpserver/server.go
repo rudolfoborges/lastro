@@ -65,6 +65,7 @@ func New(deps Deps, opts ...Option) *Server {
 	})
 	s.registerInstructions()
 	s.registerCatalog()
+	s.registerClarifications()
 	return s
 }
 

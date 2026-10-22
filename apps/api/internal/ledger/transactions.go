@@ -33,8 +33,10 @@ func (s *Service) CreateTransaction(ctx context.Context, accountID, observationI
 	var created Transaction
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
-		created, err = t.createTransaction(observationID, in, actor)
-		return err
+		if created, err = t.createTransaction(observationID, in, actor); err != nil {
+			return err
+		}
+		return t.refreshClarifications(created.ID)
 	})
 	return created, err
 }

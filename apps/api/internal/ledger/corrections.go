@@ -39,6 +39,7 @@ type Actor struct {
 	Author        Author
 	Ref           string
 	ObservationID *uuid.UUID
+	RequestID     string
 }
 
 type Optional[T any] struct {
@@ -97,7 +98,9 @@ func (s *Service) Correct(ctx context.Context, accountID, transactionID uuid.UUI
 	var correction Correction
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
-		correction, err = t.correct(transactionID, patch, reason, actor)
+		correction, err = once(t, "update_transaction", actor, []any{transactionID, patch, reason}, func() (Correction, error) {
+			return t.correct(transactionID, patch, reason, actor)
+		})
 		return err
 	})
 	return correction, err
@@ -107,7 +110,9 @@ func (s *Service) Void(ctx context.Context, accountID, transactionID uuid.UUID, 
 	var voided Transaction
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
-		voided, err = t.void(transactionID, reason, actor)
+		voided, err = once(t, "void_transaction", actor, []any{transactionID, reason}, func() (Transaction, error) {
+			return t.void(transactionID, reason, actor)
+		})
 		return err
 	})
 	return voided, err
@@ -134,6 +139,25 @@ func InitialStatus(method *PaymentMethodRef) Status {
 }
 
 func (t *tx) correct(transactionID uuid.UUID, patch Patch, reason string, actor Actor) (Correction, error) {
+	correction, err := t.applyCorrection(transactionID, patch, reason, actor)
+	if err != nil {
+		return Correction{}, err
+	}
+	if actor.Author == AuthorUser {
+		if err := t.closeConflictsOn(transactionID, correction.Changed); err != nil {
+			return Correction{}, err
+		}
+	}
+	if err := t.openConflicts(correction.Transaction, correction.Conflicts, actor); err != nil {
+		return Correction{}, err
+	}
+	if err := t.refreshClarifications(transactionID); err != nil {
+		return Correction{}, err
+	}
+	return correction, nil
+}
+
+func (t *tx) applyCorrection(transactionID uuid.UUID, patch Patch, reason string, actor Actor) (Correction, error) {
 	reason, err := requiredText("reason", reason, maxReason)
 	if err != nil {
 		return Correction{}, err
@@ -269,6 +293,9 @@ func (t *tx) void(transactionID uuid.UUID, reason string, actor Actor) (Transact
 		return Transaction{}, err
 	}
 	if err := t.recordRevision(transactionID, fieldStatus, jsonValue(current.Status), jsonValue(saved.Status), reason, actor); err != nil {
+		return Transaction{}, err
+	}
+	if err := t.refreshClarifications(transactionID); err != nil {
 		return Transaction{}, err
 	}
 	return saved, nil
