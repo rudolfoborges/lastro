@@ -7,37 +7,44 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/money"
 	"github.com/rudolfoborges/lastro/apps/api/internal/redaction"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
-	"github.com/rudolfoborges/lastro/apps/api/internal/store/platformdb"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/storetest"
 )
 
 type fixture struct {
-	t       *testing.T
-	store   *store.Store
-	ledger  *ledger.Service
-	account uuid.UUID
+	t           *testing.T
+	store       *store.Store
+	databaseURL string
+	ledger      *ledger.Service
+	accounts    *accounts.Service
+	account     uuid.UUID
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	s, err := store.Open(t.Context(), storetest.MigratedDatabaseURL(t))
+	databaseURL := storetest.MigratedDatabaseURL(t)
+	s, err := store.Open(t.Context(), databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	f := &fixture{t: t, store: s, ledger: ledger.NewService(s)}
+	f := &fixture{t: t, store: s, databaseURL: databaseURL, ledger: ledger.NewService(s), accounts: accounts.NewService(s)}
 	f.account = f.newAccount("Rudolfo")
 	return f
 }
 
 func (f *fixture) newAccount(name string) uuid.UUID {
 	f.t.Helper()
-	account, err := f.store.Platform().CreateAccount(f.t.Context(), platformdb.CreateAccountParams{ID: store.NewID(), Name: name})
+	invite, err := f.accounts.CreateInvite(f.t.Context(), time.Hour, "")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	account, _, err := f.accounts.SignUp(f.t.Context(), invite.Code, name)
 	if err != nil {
 		f.t.Fatal(err)
 	}

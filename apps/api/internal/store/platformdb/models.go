@@ -40,6 +40,27 @@ type ApiRequest struct {
 	OccurredAt time.Time
 }
 
+type Category struct {
+	ID         uuid.UUID
+	AccountID  uuid.UUID
+	Code       string
+	Label      string
+	ArchivedAt *time.Time
+	CreatedAt  time.Time
+}
+
+type CategoryAllocation struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	TransactionID uuid.UUID
+	CategoryID    uuid.UUID
+	AmountMinor   int64
+	Status        string
+	Origin        string
+	SupersededAt  *time.Time
+	CreatedAt     time.Time
+}
+
 type FieldProvenance struct {
 	AccountID       uuid.UUID
 	TransactionID   uuid.UUID

@@ -15,6 +15,7 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/platformdb"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/tenantdb"
+	"github.com/rudolfoborges/lastro/apps/api/internal/taxonomy"
 )
 
 const (
@@ -128,6 +129,12 @@ func (s *Service) SignUp(ctx context.Context, inviteCode, accountName string) (A
 			return fmt.Errorf("create account: %w", err)
 		}
 		account = fromPlatformAccount(row)
+		for _, category := range taxonomy.Defaults {
+			err := q.CreateCategory(ctx, platformdb.CreateCategoryParams{ID: store.NewID(), AccountID: account.ID, Code: category.Code, Label: category.Label})
+			if err != nil {
+				return fmt.Errorf("create default category %s: %w", category.Code, err)
+			}
+		}
 
 		_, err = q.RedeemInvite(ctx, platformdb.RedeemInviteParams{CodeHash: inviteCodeHash(inviteCode), AccountID: &account.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
