@@ -1,0 +1,20 @@
+root = "."
+tmp_dir = "tmp"
+env_files = []
+
+[build]
+cmd = "go build -o ./tmp/lastro ./cmd/lastro"
+entrypoint = ["./tmp/lastro", "serve"]
+include_ext = ["go", "sql"]
+exclude_dir = ["tmp"]
+exclude_regex = ["_test\\.go$"]
+delay = 300
+stop_on_error = true
+send_interrupt = true
+kill_delay = 2000000000
+
+[log]
+time = false
+
+[misc]
+clean_on_exit = true

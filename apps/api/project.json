@@ -107,6 +107,13 @@
         "command": "go run ./cmd/lastro migrate",
         "forwardAllArgs": true
       }
+    },
+    "seed": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run ./cmd/lastro seed"
+      }
     }
   }
 }
