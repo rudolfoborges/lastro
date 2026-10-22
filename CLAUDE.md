@@ -55,6 +55,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | "agora", "hoje", "ontem" | `date_reference` (`now`, `today`, `yesterday`) |
 | fuso horário da conta | `timezone` |
 | valor em centavos / moeda | `amount_minor` / `currency` |
+| redação de dados sensíveis | `redaction` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
