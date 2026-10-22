@@ -7,8 +7,7 @@ Production runs on [Railway](https://railway.com): one `api` service built from 
 | Resource | Settings |
 | --- | --- |
 | `postgres` | Railway Postgres (`postgres-ssl:18`), reached by the API over the private network |
-| `api` | Source: GitHub `main`, root directory `/apps/api`, rebuilt only when `/apps/api/**` changes |
-| | Waits for every GitHub check suite on the commit (the CI workflow) before deploying; a failed CI skips the deploy |
+| `api` | Source: GitHub `rudolfoborges/lastro`, root directory `/apps/api`, built from its `Dockerfile` |
 | | Pre-deploy: `lastro migrate up`, so migrations run before the new version receives traffic and a failure aborts the deploy |
 | | Healthcheck `GET /readyz` (60s), restart on failure (5 retries) |
 | | Variables: `DATABASE_URL` (reference to the database's private URL), `LASTRO_ENV=production`, `LOG_LEVEL=info`, `TRUST_PROXY_HEADERS=true` (Railway's edge sets `X-Real-IP`) |
@@ -32,22 +31,24 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
    railway config apply            # only after reviewing the plan
    ```
 
-   Railway may ask to install its GitHub app on `rudolfoborges/lastro`.
+3. Wire the deploy job: in the project's **Settings → Tokens**, create a token for `production` and store it as the repository secret `RAILWAY_TOKEN` (`gh secret set RAILWAY_TOKEN`). Store the service and environment IDs as the repository variables `RAILWAY_SERVICE_ID` and `RAILWAY_ENVIRONMENT_ID` (`gh variable set`).
 
-3. Custom domain: add `domains: ["<subdomain>"]` to the `api` service in `.railway/railway.ts`, run plan and apply, then create the DNS record Railway shows. Case and the Android app use this host for `/mcp` and the wallet webhook.
-4. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
-5. Create the first account:
+4. Custom domain: add `domains: ["<subdomain>"]` to the `api` service in `.railway/railway.ts`, run plan and apply, then create the DNS record Railway shows. Case and the Android app use this host for `/mcp` and the wallet webhook.
+5. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
+6. Create the first account:
 
    ```bash
-   railway ssh --service api
-   lastro invites create --note "Rudolfo"
+   railway ssh keys add            # once, registers a local public key
+   railway ssh --service api lastro invites create --note "Rudolfo"
    ```
 
    Then sign up with the code through `POST /v1/accounts` (see `apps/api/README.md`) and keep the returned `admin` token in a password manager.
 
 ## Deploys
 
-A merge to `main` runs CI. Railway waits for the CI check suites, builds the image, runs `lastro migrate up` in a pre-deploy container, waits for `/readyz` and only then moves traffic to the new deployment.
+Deploys are triggered by the `deploy` job of the CI workflow, not by a Railway GitHub trigger. On a push to `main` that changes `apps/api`, the job waits for the `ci` job to pass and asks Railway, with `RAILWAY_TOKEN`, to deploy that exact commit (`.github/scripts/railway-deploy.sh`). Railway builds the image, runs `lastro migrate up` in a pre-deploy container, waits for `/readyz` and only then moves traffic; the job fails when the deployment fails.
+
+Do not also connect the service to a Railway GitHub trigger: every push would then deploy twice, and once before CI finished. To deploy `main` by hand, run the CI workflow from the Actions tab (`workflow_dispatch`), which always deploys, or `railway redeploy --service api --from-source`.
 
 To roll back, redeploy the previous deployment from the Railway dashboard (images are kept for 72 hours on Hobby). Migrations are not rolled back automatically: when a release must be reverted together with its schema change, run `lastro migrate down` through `railway ssh` before redeploying.
 

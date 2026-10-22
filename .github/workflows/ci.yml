@@ -77,3 +77,36 @@ jobs:
 
       - name: Scan dependencies for known vulnerabilities
         run: pnpm nx run-many -t vulncheck --output-style=static
+
+  deploy:
+    name: deploy
+    needs: ci
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check whether the API changed
+        id: changes
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null && git diff --quiet "${BEFORE}" "${GITHUB_SHA}" -- apps/api; then
+            echo "api=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "api=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Deploy the tested commit to Railway
+        if: steps.changes.outputs.api == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: .github/scripts/railway-deploy.sh
