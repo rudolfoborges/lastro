@@ -1,0 +1,52 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/api",
+  "tags": ["lang:go", "type:app"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["production", "goToolchain"],
+      "outputs": ["{workspaceRoot}/dist/apps/api"],
+      "options": {
+        "cwd": "apps/api",
+        "command": "go build -trimpath -ldflags='-s -w' -o ../../dist/apps/api/lastro ./cmd/lastro"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run ./cmd/lastro serve"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default", "goToolchain", { "env": "TEST_DATABASE_URL" }],
+      "options": {
+        "cwd": "apps/api",
+        "command": "go test -race ./..."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default", "goToolchain", { "runtime": "golangci-lint version" }],
+      "options": {
+        "cwd": "apps/api",
+        "command": "golangci-lint run ./..."
+      }
+    },
+    "tidy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go mod tidy"
+      }
+    }
+  }
+}
