@@ -211,3 +211,10 @@ sketch
 .nx/polygraph
 .claude/worktrees
 .claude/settings.local.json
+# Nx
+.nx/
+
+# Go
+apps/api/tmp/
+*.test
+*.out

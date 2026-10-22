@@ -1,5 +1,10 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "nxCloudId": "6ada38d9c7b25e021911181b",
-  "analytics": true
+  "analytics": true,
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["default", "!{projectRoot}/**/*_test.go", "!{projectRoot}/**/*.md", "!{projectRoot}/.golangci.yml"],
+    "goToolchain": [{ "runtime": "go version" }]
+  }
 }
