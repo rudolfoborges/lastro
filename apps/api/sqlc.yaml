@@ -1,0 +1,44 @@
+version: "2"
+
+overrides:
+  go:
+    overrides:
+      - db_type: uuid
+        go_type: github.com/google/uuid.UUID
+      - db_type: uuid
+        nullable: true
+        go_type:
+          import: github.com/google/uuid
+          type: UUID
+          pointer: true
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          import: time
+          type: Time
+          pointer: true
+
+sql:
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries/platform
+    gen:
+      go:
+        package: platformdb
+        out: internal/store/platformdb
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries/tenant
+    gen:
+      go:
+        package: tenantdb
+        out: internal/store/tenantdb
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true

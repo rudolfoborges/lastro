@@ -71,9 +71,9 @@ jobs:
 
       - uses: nrwl/nx-set-shas@v5
 
-      - name: Lint, test and build affected projects
+      - name: Lint, test, build and check generated code of affected projects
         if: github.event_name != 'schedule'
-        run: pnpm nx affected -t lint test build --output-style=static
+        run: pnpm nx affected -t lint test build sqlc-check --output-style=static
 
       - name: Scan dependencies for known vulnerabilities
         run: pnpm nx run-many -t vulncheck --output-style=static
