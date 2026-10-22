@@ -19,8 +19,11 @@ Run every task through Nx from the repository root:
 | `pnpm nx run api:test` | Runs the tests with the race detector |
 | `pnpm nx run api:lint` | Runs golangci-lint with `.golangci.yml` |
 | `pnpm nx run api:tidy` | Runs `go mod tidy` |
+| `pnpm nx run api:vulncheck` | Runs `govulncheck` against the code and the Go toolchain |
 
 `build`, `test` and `lint` are cached by Nx; the cache key includes the Go toolchain version.
+
+Go tools used by the targets are pinned in `tools.mod` and run with `go tool -modfile=tools.mod <tool>`, so local runs and CI use the same versions without adding the tools' dependencies to `go.mod`. The Go toolchain itself is pinned by the `toolchain` directive in `go.mod`.
 
 To run locally, copy `.env.example` to `.env` and adjust `DATABASE_URL`.
 
