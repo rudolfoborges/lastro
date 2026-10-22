@@ -241,6 +241,11 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
+| `update_transaction` | `expenses:write` | Corrects description, merchant, payee, amount, date, payment method, nature, purpose or installments, with a reason |
+| `set_category` | `expenses:write` | Sets one category or an exact split (confirmed by Rudolfo, or suggested by Case) |
+| `void_transaction` | `expenses:write` | Marks a record made by mistake as voided; nothing is deleted |
+| `get_transaction` | `expenses:read` | Transaction with categories, evidence, full history and open questions |
+| `list_transactions` | `expenses:read` | Lists by purchase period, status, category and payment method, without totals |
 | `list_clarifications` | `expenses:read` | Lists pending questions by kind, status and purchase period |
 | `resolve_clarification` | `expenses:write` | Answers (`resolve`) or closes (`dismiss`) a question |
 

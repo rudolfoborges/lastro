@@ -12,6 +12,55 @@ import (
 	"github.com/google/uuid"
 )
 
+const allocationsForTransactions = `-- name: AllocationsForTransactions :many
+SELECT a.transaction_id, c.code, c.label, a.amount_minor, a.status, a.origin
+FROM category_allocations a
+JOIN categories c ON c.account_id = a.account_id AND c.id = a.category_id
+WHERE a.account_id = $1 AND a.transaction_id = ANY ($2::uuid[]) AND a.superseded_at IS NULL
+ORDER BY a.transaction_id, a.amount_minor DESC, c.code
+`
+
+type AllocationsForTransactionsParams struct {
+	AccountID      uuid.UUID
+	TransactionIds []uuid.UUID
+}
+
+type AllocationsForTransactionsRow struct {
+	TransactionID uuid.UUID
+	Code          string
+	Label         string
+	AmountMinor   int64
+	Status        string
+	Origin        string
+}
+
+func (q *Queries) AllocationsForTransactions(ctx context.Context, arg AllocationsForTransactionsParams) ([]AllocationsForTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, allocationsForTransactions, arg.AccountID, arg.TransactionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AllocationsForTransactionsRow{}
+	for rows.Next() {
+		var i AllocationsForTransactionsRow
+		if err := rows.Scan(
+			&i.TransactionID,
+			&i.Code,
+			&i.Label,
+			&i.AmountMinor,
+			&i.Status,
+			&i.Origin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const currentAllocations = `-- name: CurrentAllocations :many
 SELECT a.id, a.category_id, c.code, c.label, c.archived_at, a.amount_minor, a.status, a.origin, a.created_at
 FROM category_allocations a

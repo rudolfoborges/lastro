@@ -173,6 +173,136 @@ func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionPa
 	return i, err
 }
 
+const listPaymentMethods = `-- name: ListPaymentMethods :many
+SELECT id, account_id, kind, card_last4, issuer, network, nickname, created_at
+FROM payment_methods
+WHERE account_id = $1
+`
+
+func (q *Queries) ListPaymentMethods(ctx context.Context, accountID uuid.UUID) ([]PaymentMethod, error) {
+	rows, err := q.db.Query(ctx, listPaymentMethods, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentMethod{}
+	for rows.Next() {
+		var i PaymentMethod
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Kind,
+			&i.CardLast4,
+			&i.Issuer,
+			&i.Network,
+			&i.Nickname,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransactions = `-- name: ListTransactions :many
+SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at
+FROM transactions t
+LEFT JOIN payment_methods pm ON pm.account_id = t.account_id AND pm.id = t.payment_method_id
+WHERE t.account_id = $1
+  AND t.status = ANY ($2::text[])
+  AND ($3::date IS NULL OR t.occurred_on >= $3::date)
+  AND ($4::date IS NULL OR t.occurred_on <= $4::date)
+  AND ($5::text IS NULL OR pm.kind = $5::text)
+  AND (
+      $6::text IS NULL
+      OR EXISTS (
+          SELECT
+          FROM category_allocations a
+          JOIN categories c ON c.account_id = a.account_id AND c.id = a.category_id
+          WHERE a.account_id = t.account_id AND a.transaction_id = t.id AND a.superseded_at IS NULL
+            AND c.code = $6::text
+      )
+      OR (
+          $6::text = 'unidentified'
+          AND NOT EXISTS (
+              SELECT FROM category_allocations a
+              WHERE a.account_id = t.account_id AND a.transaction_id = t.id AND a.superseded_at IS NULL
+          )
+      )
+  )
+ORDER BY t.occurred_on DESC NULLS LAST, t.created_at DESC, t.id DESC
+LIMIT $8 OFFSET $7
+`
+
+type ListTransactionsParams struct {
+	AccountID    uuid.UUID
+	Statuses     []string
+	FromDate     *time.Time
+	ToDate       *time.Time
+	PaymentKind  *string
+	CategoryCode *string
+	SkipRows     int32
+	MaxRows      int32
+}
+
+func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listTransactions,
+		arg.AccountID,
+		arg.Statuses,
+		arg.FromDate,
+		arg.ToDate,
+		arg.PaymentKind,
+		arg.CategoryCode,
+		arg.SkipRows,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.OriginalDescription,
+			&i.Description,
+			&i.Merchant,
+			&i.Payee,
+			&i.AmountMinor,
+			&i.Currency,
+			&i.OriginalAmountMinor,
+			&i.OriginalCurrency,
+			&i.OccurredAt,
+			&i.OccurredOn,
+			&i.DatePrecision,
+			&i.DateSource,
+			&i.PaymentMethodID,
+			&i.Nature,
+			&i.Status,
+			&i.Purpose,
+			&i.InstallmentCount,
+			&i.InstallmentAmountMinor,
+			&i.RefundOfID,
+			&i.MergedIntoID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockTransaction = `-- name: LockTransaction :one
 SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
 FROM transactions

@@ -35,3 +35,10 @@ WHERE account_id = @account_id AND transaction_id = @transaction_id AND supersed
 -- name: InsertAllocation :exec
 INSERT INTO category_allocations (id, account_id, transaction_id, category_id, amount_minor, status, origin)
 VALUES (@id, @account_id, @transaction_id, @category_id, @amount_minor, @status, @origin);
+
+-- name: AllocationsForTransactions :many
+SELECT a.transaction_id, c.code, c.label, a.amount_minor, a.status, a.origin
+FROM category_allocations a
+JOIN categories c ON c.account_id = a.account_id AND c.id = a.category_id
+WHERE a.account_id = @account_id AND a.transaction_id = ANY (@transaction_ids::uuid[]) AND a.superseded_at IS NULL
+ORDER BY a.transaction_id, a.amount_minor DESC, c.code;
