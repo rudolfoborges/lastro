@@ -23,7 +23,7 @@ func (a *api) mcpEndpoint(next http.Handler) http.HandlerFunc {
 		return mcpserver.TokenInfo(principal), nil
 	}, nil)(http.MaxBytesHandler(next, maxMCPBodyBytes))
 
-	return a.authenticated("", func(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
+	return a.guard("", true, func(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
 		withTokenInfo.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principal)))
 	})
 }

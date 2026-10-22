@@ -72,6 +72,7 @@ type Invite struct {
 type Principal struct {
 	AccountID uuid.UUID
 	KeyID     uuid.UUID
+	GrantID   uuid.UUID
 	Scopes    []Scope
 }
 
@@ -81,13 +82,22 @@ func (p Principal) Has(scope Scope) bool {
 
 type CredentialKind string
 
-const CredentialAPIKey CredentialKind = "api_key"
+const (
+	CredentialAPIKey     CredentialKind = "api_key"
+	CredentialOAuthGrant CredentialKind = "oauth_grant"
+)
 
 func (p Principal) CredentialKind() CredentialKind {
+	if p.GrantID != uuid.Nil {
+		return CredentialOAuthGrant
+	}
 	return CredentialAPIKey
 }
 
 func (p Principal) CredentialID() uuid.UUID {
+	if p.GrantID != uuid.Nil {
+		return p.GrantID
+	}
 	return p.KeyID
 }
 
@@ -338,20 +348,28 @@ func (s *Service) RevokeKey(ctx context.Context, accountID, keyID uuid.UUID) (AP
 
 func (s *Service) RecordRequest(ctx context.Context, p Principal, record RequestRecord) error {
 	return s.store.TenantTx(ctx, p.AccountID, func(q *tenantdb.Queries) error {
-		err := q.RecordAPIRequest(ctx, tenantdb.RecordAPIRequestParams{
+		params := tenantdb.RecordAPIRequestParams{
 			ID:         store.NewID(),
 			AccountID:  p.AccountID,
-			ApiKeyID:   p.KeyID,
 			RequestID:  record.RequestID,
 			Method:     record.Method,
 			Route:      record.Route,
 			Status:     clampInt32(int64(record.Status)),
 			DurationMs: clampInt32(record.Duration.Milliseconds()),
-		})
-		if err != nil {
+		}
+		credential := p.CredentialID()
+		if p.CredentialKind() == CredentialOAuthGrant {
+			params.OauthGrantID = &credential
+		} else {
+			params.ApiKeyID = &credential
+		}
+		if err := q.RecordAPIRequest(ctx, params); err != nil {
 			return fmt.Errorf("record API request: %w", err)
 		}
-		return q.TouchAPIKey(ctx, tenantdb.TouchAPIKeyParams{AccountID: p.AccountID, ID: p.KeyID})
+		if p.CredentialKind() == CredentialOAuthGrant {
+			return q.TouchOAuthGrant(ctx, tenantdb.TouchOAuthGrantParams{AccountID: p.AccountID, ID: credential})
+		}
+		return q.TouchAPIKey(ctx, tenantdb.TouchAPIKeyParams{AccountID: p.AccountID, ID: credential})
 	})
 }
 

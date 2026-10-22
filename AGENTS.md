@@ -63,6 +63,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | proveniência por campo | `field_provenance` |
 | categoria sugerida / confirmada / ausente | `allocation status`: `suggested` / `confirmed` / `missing` |
 | chave de idempotência / estado da operação: concluída, pendente, falhou | `idempotency_key` / `outcome`: `completed`, `pending`, `failed` |
+| autorização dada a um aplicativo (OAuth) | `oauth_grant` |
 | cartão de crédito, cartão de débito, Pix, dinheiro | `credit_card`, `debit_card`, `pix`, `cash` |
 | tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated` |
 

@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"log/slog"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,16 +29,19 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		LogFormat:       config.LogFormatText,
 		ShutdownTimeout: 15 * time.Second,
 		RateLimits:      config.RateLimits{PerKeyPerMinute: 120, UnauthenticatedPerMinute: 10},
+		PublicBaseURL:   &url.URL{Scheme: "http", Host: "localhost:8080"},
+		OAuth:           config.OAuth{RedirectHosts: []string{"chatgpt.com"}, MetadataHosts: []string{"chatgpt.com"}},
 	}
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
 	}
 }
 
 func TestLoadUsesJSONLogsInProduction(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{
-		"DATABASE_URL": "postgres://db/lastro",
-		"LASTRO_ENV":   "production",
+		"DATABASE_URL":    "postgres://db/lastro",
+		"LASTRO_ENV":      "production",
+		"PUBLIC_BASE_URL": "https://lastro.code04.dev",
 	}))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -72,8 +77,10 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 		ShutdownTimeout:   3 * time.Second,
 		RateLimits:        config.RateLimits{PerKeyPerMinute: 30, UnauthenticatedPerMinute: 5},
 		TrustProxyHeaders: true,
+		PublicBaseURL:     &url.URL{Scheme: "http", Host: "localhost:9090"},
+		OAuth:             config.OAuth{RedirectHosts: []string{"chatgpt.com"}, MetadataHosts: []string{"chatgpt.com"}},
 	}
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
 	}
 }
@@ -106,5 +113,34 @@ func TestLoadReportsEveryInvalidValue(t *testing.T) {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Errorf("error %q does not mention %q", err, fragment)
 		}
+	}
+}
+
+func TestPublicBaseURLIsRequiredInProductionAndMustBeAnOrigin(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://localhost/lastro"}
+
+	cfg, err := config.Load(func(key string) string { return base[key] })
+	if err != nil || cfg.PublicBaseURL.String() != "http://localhost:8080" {
+		t.Errorf("development default = %v, %v", cfg.PublicBaseURL, err)
+	}
+
+	for name, value := range map[string]string{
+		"missing in production": "",
+		"http in production":    "http://lastro.code04.dev",
+		"with a path":           "https://lastro.code04.dev/api",
+		"with a query":          "https://lastro.code04.dev?x=1",
+	} {
+		t.Run(name, func(t *testing.T) {
+			vars := map[string]string{"DATABASE_URL": "postgres://localhost/lastro", "LASTRO_ENV": "production", "PUBLIC_BASE_URL": value}
+			if _, err := config.Load(func(key string) string { return vars[key] }); err == nil || !strings.Contains(err.Error(), "PUBLIC_BASE_URL") {
+				t.Errorf("Load() error = %v, want a PUBLIC_BASE_URL error", err)
+			}
+		})
+	}
+
+	vars := map[string]string{"DATABASE_URL": "postgres://localhost/lastro", "LASTRO_ENV": "production", "PUBLIC_BASE_URL": "https://lastro.code04.dev/", "OAUTH_REDIRECT_HOSTS": "chatgpt.com, Example.com"}
+	cfg, err = config.Load(func(key string) string { return vars[key] })
+	if err != nil || cfg.PublicBaseURL.String() != "https://lastro.code04.dev" || cfg.OAuth.RedirectHosts[1] != "example.com" {
+		t.Errorf("production = %+v, %v", cfg, err)
 	}
 }

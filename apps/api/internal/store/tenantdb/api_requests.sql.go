@@ -12,19 +12,20 @@ import (
 )
 
 const recordAPIRequest = `-- name: RecordAPIRequest :exec
-INSERT INTO api_requests (id, account_id, api_key_id, request_id, method, route, status, duration_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO api_requests (id, account_id, api_key_id, oauth_grant_id, request_id, method, route, status, duration_ms)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type RecordAPIRequestParams struct {
-	ID         uuid.UUID
-	AccountID  uuid.UUID
-	ApiKeyID   uuid.UUID
-	RequestID  string
-	Method     string
-	Route      string
-	Status     int32
-	DurationMs int32
+	ID           uuid.UUID
+	AccountID    uuid.UUID
+	ApiKeyID     *uuid.UUID
+	OauthGrantID *uuid.UUID
+	RequestID    string
+	Method       string
+	Route        string
+	Status       int32
+	DurationMs   int32
 }
 
 func (q *Queries) RecordAPIRequest(ctx context.Context, arg RecordAPIRequestParams) error {
@@ -32,6 +33,7 @@ func (q *Queries) RecordAPIRequest(ctx context.Context, arg RecordAPIRequestPara
 		arg.ID,
 		arg.AccountID,
 		arg.ApiKeyID,
+		arg.OauthGrantID,
 		arg.RequestID,
 		arg.Method,
 		arg.Route,

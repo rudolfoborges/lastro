@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,13 @@ type Config struct {
 	// Only enable behind a proxy that overwrites X-Real-IP and X-Forwarded-For,
 	// otherwise clients can spoof the address used for rate limiting.
 	TrustProxyHeaders bool
+	PublicBaseURL     *url.URL
+	OAuth             OAuth
+}
+
+type OAuth struct {
+	RedirectHosts []string
+	MetadataHosts []string
 }
 
 type RateLimits struct {
@@ -55,7 +63,12 @@ func Load(getenv func(string) string) (Config, error) {
 			UnauthenticatedPerMinute: r.positiveInt("UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE", 10),
 		},
 		TrustProxyHeaders: r.boolean("TRUST_PROXY_HEADERS", false),
+		OAuth: OAuth{
+			RedirectHosts: r.hosts("OAUTH_REDIRECT_HOSTS", []string{"chatgpt.com"}),
+			MetadataHosts: r.hosts("OAUTH_METADATA_HOSTS", []string{"chatgpt.com"}),
+		},
 	}
+	cfg.PublicBaseURL = r.baseURL("PUBLIC_BASE_URL", cfg.Environment, cfg.Port)
 	cfg.LogFormat = r.logFormat("LOG_FORMAT", defaultLogFormat(cfg.Environment))
 	if err := errors.Join(r.errs...); err != nil {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", err)
@@ -169,6 +182,45 @@ func (r *reader) logLevel(key string, fallback slog.Level) slog.Level {
 		return fallback
 	}
 	return level
+}
+
+func (r *reader) baseURL(key string, env Environment, port int) *url.URL {
+	value, ok := r.lookup(key)
+	if !ok {
+		if env == Production {
+			r.fail("%s is required in production: the public origin Case uses, such as https://lastro.example.com", key)
+			return nil
+		}
+		value = fmt.Sprintf("http://localhost:%d", port)
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		r.fail("%s must be an origin such as https://lastro.example.com, without path or query: got %q", key, value)
+		return nil
+	}
+	if u.Scheme != "https" && (env == Production || u.Scheme != "http") {
+		r.fail("%s must use https in production: got %q", key, value)
+		return nil
+	}
+	u.Path = ""
+	return u
+}
+
+func (r *reader) hosts(key string, fallback []string) []string {
+	value, ok := r.lookup(key)
+	if !ok {
+		return fallback
+	}
+	var hosts []string
+	for _, host := range strings.Split(value, ",") {
+		host = strings.ToLower(strings.TrimSpace(host))
+		if host == "" || strings.ContainsAny(host, "/:@ ") {
+			r.fail("%s must be a comma-separated list of host names: got %q", key, value)
+			return fallback
+		}
+		hosts = append(hosts, host)
+	}
+	return hosts
 }
 
 func (r *reader) logFormat(key string, fallback LogFormat) LogFormat {
