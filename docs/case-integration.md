@@ -4,9 +4,11 @@ Case is Rudolfo's AI assistant and runs on ChatGPT. Case talks to Rudolfo, under
 
 ## Connection
 
+> **Temporary URL.** Until the certificate of `lastro.code04.dev` is issued, Lastro is served and announces itself (`PUBLIC_BASE_URL`, the OAuth issuer) at `https://api-production-9ee63.up.railway.app`. Switching back to `lastro.code04.dev` means changing `PUBLIC_BASE_URL` in `.railway/railway.ts`, applying it, and in ChatGPT changing the app's URL and authorizing again: tokens are bound to the old address and stop working.
+
 | Item | Value |
 | --- | --- |
-| MCP server URL | `https://lastro.code04.dev/mcp` |
+| MCP server URL | `https://api-production-9ee63.up.railway.app/mcp` |
 | Transport | Streamable HTTP |
 | Authentication | OAuth 2.1 (ChatGPT discovers it from the server) |
 | Scopes Case needs | `expenses:read`, `expenses:write` (`statements:write` only when statements arrive, M3) |
@@ -17,7 +19,7 @@ Case is Rudolfo's AI assistant and runs on ChatGPT. Case talks to Rudolfo, under
 2. Sign up and keep the `admin` key in a password manager; it is shown only once:
 
    ```bash
-   curl -X POST https://lastro.code04.dev/v1/accounts \
+   curl -X POST https://api-production-9ee63.up.railway.app/v1/accounts \
      -d '{"invite_code": "inv_…", "name": "Rudolfo"}'
    ```
 
@@ -28,7 +30,7 @@ ChatGPT's labels change over time; the steps are what matters.
 1. In ChatGPT, open **Settings → Apps** (formerly Connectors) → **Advanced settings** and turn on **Developer mode**.
 2. **Create** an app (custom MCP connector):
    - name: `Lastro`;
-   - MCP server URL: `https://lastro.code04.dev/mcp`;
+   - MCP server URL: `https://api-production-9ee63.up.railway.app/mcp`;
    - authentication: **OAuth**. Leave client ID and secret empty: ChatGPT identifies itself with its client metadata document.
 3. ChatGPT opens Lastro's authorization page, "ChatGPT quer acessar o Lastro". Check the host shown is `chatgpt.com`, keep the permissions you want, paste the **admin key** and click **Autorizar**. The key only proves the account is yours; ChatGPT receives its own access, which you can revoke.
 4. Back in ChatGPT, the app lists Lastro's tools. Create a **project** for Case, enable the Lastro app in it, and paste the [project instructions](#project-instructions) below.
@@ -37,8 +39,8 @@ ChatGPT's labels change over time; the steps are what matters.
 To disconnect ChatGPT, delete the app there or revoke its access in Lastro:
 
 ```bash
-curl -H "Authorization: Bearer $ADMIN" https://lastro.code04.dev/v1/oauth/grants
-curl -X POST -H "Authorization: Bearer $ADMIN" https://lastro.code04.dev/v1/oauth/grants/<id>/revoke
+curl -H "Authorization: Bearer $ADMIN" https://api-production-9ee63.up.railway.app/v1/oauth/grants
+curl -X POST -H "Authorization: Bearer $ADMIN" https://api-production-9ee63.up.railway.app/v1/oauth/grants/<id>/revoke
 ```
 
 ### Other MCP clients
@@ -46,7 +48,7 @@ curl -X POST -H "Authorization: Bearer $ADMIN" https://lastro.code04.dev/v1/oaut
 Clients that can send a header (MCP Inspector, Claude Code, scripts) use an API key instead of OAuth. Create one with only the scopes needed:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $ADMIN" https://lastro.code04.dev/v1/api-keys \
+curl -X POST -H "Authorization: Bearer $ADMIN" https://api-production-9ee63.up.railway.app/v1/api-keys \
   -d '{"name": "inspector", "scopes": ["expenses:read"]}'
 ```
 
