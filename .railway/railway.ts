@@ -16,7 +16,7 @@ export default defineRailway(() => {
       LASTRO_ENV: "production",
       LOG_LEVEL: "info",
       TRUST_PROXY_HEADERS: "true",
-      PUBLIC_BASE_URL: "https://lastro.code04.dev",
+      PUBLIC_BASE_URL: "https://api-production-9ee63.up.railway.app",
     },
   });
 
