@@ -27,7 +27,7 @@ const serverInstructions = `Lastro stores, validates and computes Rudolfo's expe
 - Classify with list_categories and the classification policy; send category_status "confirmed" only when Rudolfo said the category himself.
 - Confirm to Rudolfo what was recorded and what is pending, using each answer's summary. A failed outcome means nothing was recorded.
 - Never compute totals yourself; use Lastro's query tools.
-Call get_instructions with topic "conversation" before recording expenses, and "classification" before classifying.`
+Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, and "notifications" before processing Google Wallet notifications.`
 
 type Deps struct {
 	Accounts *accounts.Service
@@ -68,6 +68,7 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerClarifications()
 	s.registerExpenses()
 	s.registerTransactions()
+	s.registerNotifications()
 	return s
 }
 

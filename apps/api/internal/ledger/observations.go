@@ -69,7 +69,7 @@ func (t *tx) recordObservation(in NewObservation) (Observation, error) {
 	return toObservation(row)
 }
 
-var eventTypes = []EventType{EventPurchase, EventPurchaseUpdate, EventCancellation, EventRefund, EventDeclined, EventNotice, EventUnrelated}
+var eventTypes = []EventType{EventPurchase, EventPurchaseUpdate, EventCancellation, EventRefund, EventDeclined, EventNotice, EventUnrelated, EventUnknown}
 
 type InterpretationRecord struct {
 	Interpretation
@@ -158,6 +158,12 @@ func (t *tx) recordInterpretation(observationID uuid.UUID, in Interpretation) (I
 		PaymentMethodID: paymentMethodID,
 		Details:         detailsJSON,
 		Author:          string(in.Author),
+		TransactionID:   in.TransactionID,
+		SubmissionHash:  in.submissionHash,
+	}
+	if in.Effect != nil {
+		effect := string(*in.Effect)
+		params.Effect = &effect
 	}
 	if in.Amount != nil {
 		params.AmountMinor = &in.Amount.Minor
@@ -177,11 +183,17 @@ func (t *tx) toInterpretation(row tenantdb.ObservationInterpretation) (Interpret
 		Version:       int(row.Version),
 		CreatedAt:     row.CreatedAt,
 		Interpretation: Interpretation{
-			EventType: EventType(row.EventType),
-			Merchant:  row.Merchant,
-			Occurred:  toOccurrence(row.OccurredAt, row.OccurredOn, row.DatePrecision, row.DateSource),
-			Author:    Author(row.Author),
+			EventType:      EventType(row.EventType),
+			Merchant:       row.Merchant,
+			Occurred:       toOccurrence(row.OccurredAt, row.OccurredOn, row.DatePrecision, row.DateSource),
+			Author:         Author(row.Author),
+			TransactionID:  row.TransactionID,
+			submissionHash: row.SubmissionHash,
 		},
+	}
+	if row.Effect != nil {
+		effect := InterpretationEffect(*row.Effect)
+		record.Effect = &effect
 	}
 	if row.AmountMinor != nil && row.Currency != nil {
 		record.Amount = &money.Money{Minor: *row.AmountMinor, Currency: *row.Currency}

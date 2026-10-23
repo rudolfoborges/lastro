@@ -82,8 +82,8 @@ func addTool[In, Out any](s *Server, spec toolSpec, run func(ctx context.Context
 		panic(fmt.Sprintf("input schema of %s: %v", spec.name, err))
 	}
 	for property, values := range spec.enums {
-		schema, ok := input.Properties[property]
-		if !ok {
+		schema := propertySchema(input, property)
+		if schema == nil {
 			panic(fmt.Sprintf("tool %s has no property %s to restrict", spec.name, property))
 		}
 		schema.Enum = values
@@ -123,6 +123,22 @@ func addTool[In, Out any](s *Server, spec toolSpec, run func(ctx context.Context
 		}
 		return nil, out, nil
 	})
+}
+
+// propertySchema resolves "items.field" paths to a property of an array's items.
+func propertySchema(schema *jsonschema.Schema, path string) *jsonschema.Schema {
+	name, rest, nested := strings.Cut(path, ".")
+	property, ok := schema.Properties[name]
+	if !ok {
+		return nil
+	}
+	if !nested {
+		return property
+	}
+	if property.Items == nil {
+		return nil
+	}
+	return propertySchema(property.Items, rest)
 }
 
 func (s *Server) audit(ctx context.Context, principal accounts.Principal, tool string, out any, toolErr *ToolError, duration time.Duration) {
