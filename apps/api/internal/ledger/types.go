@@ -47,6 +47,7 @@ const (
 	EventDeclined       EventType = "declined"
 	EventNotice         EventType = "notice"
 	EventUnrelated      EventType = "unrelated"
+	EventUnknown        EventType = "unknown"
 )
 
 type Author string
@@ -167,13 +168,16 @@ type NewObservation struct {
 }
 
 type Interpretation struct {
-	EventType     EventType
-	Amount        *money.Money
-	Merchant      *string
-	Occurred      calendar.Occurrence
-	PaymentMethod *PaymentMethodRef
-	Details       map[string]any
-	Author        Author
+	EventType      EventType
+	Amount         *money.Money
+	Merchant       *string
+	Occurred       calendar.Occurrence
+	PaymentMethod  *PaymentMethodRef
+	Details        map[string]any
+	Author         Author
+	Effect         *InterpretationEffect
+	TransactionID  *uuid.UUID
+	submissionHash []byte
 }
 
 type Transaction struct {
@@ -209,6 +213,7 @@ type NewTransaction struct {
 	Status              Status
 	Purpose             *string
 	Installments        *Installments
+	RefundOfID          *uuid.UUID
 }
 
 type Evidence struct {

@@ -474,6 +474,7 @@ func asNewTransaction(tr Transaction) NewTransaction {
 		Status:              tr.Status,
 		Purpose:             tr.Purpose,
 		Installments:        tr.Installments,
+		RefundOfID:          tr.RefundOfID,
 	}
 	if tr.PaymentMethod != nil {
 		in.PaymentMethod = &PaymentMethodRef{Kind: tr.PaymentMethod.Kind, CardLast4: tr.PaymentMethod.CardLast4}
