@@ -13,18 +13,27 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/taxonomy"
 )
 
-func split(parts ...any) []ledger.Split {
-	var out []ledger.Split
-	for i := 0; i < len(parts); i += 2 {
-		out = append(out, ledger.Split{Code: parts[i].(string), Amount: ptr(brl(int64(parts[i+1].(int))))})
-	}
-	return out
+func (f *fixture) categorize(tr ledger.Transaction, code string, status ledger.AllocationStatus, actor ledger.Actor) (ledger.Categorization, error) {
+	f.t.Helper()
+	return f.ledger.Categorize(f.t.Context(), f.account, tr.ID, code, status, "classificação", actor)
 }
 
-func (f *fixture) categorize(id any, parts []ledger.Split, status ledger.AllocationStatus, actor ledger.Actor) (ledger.Categorization, error) {
+func (f *fixture) asTenant(fn func(pgx.Tx) error) error {
 	f.t.Helper()
-	tr := id.(ledger.Transaction)
-	return f.ledger.Categorize(f.t.Context(), f.account, tr.ID, parts, status, "classificação", actor)
+	conn, err := pgx.Connect(f.t.Context(), f.databaseURL)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	return pgx.BeginFunc(f.t.Context(), conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(f.t.Context(), "SET LOCAL ROLE lastro_app"); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(f.t.Context(), "SELECT set_config('app.account_id', $1, true)", f.account.String()); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
 }
 
 func TestNewAccountsStartWithTheDefaultTaxonomy(t *testing.T) {
@@ -49,35 +58,26 @@ func TestNewAccountsStartWithTheDefaultTaxonomy(t *testing.T) {
 	}
 }
 
-func TestASingleCategoryTakesTheWholeAmount(t *testing.T) {
+func TestACategoryCoversTheWholeTransaction(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
 
-	result, err := f.categorize(created, []ledger.Split{{Code: "groceries"}}, ledger.AllocationSuggested, agent)
+	result, err := f.categorize(created, "groceries", ledger.AllocationSuggested, agent)
 
 	if err != nil || !result.Changed {
 		t.Fatalf("Categorize() = %+v, %v", result, err)
 	}
-	if len(result.Allocations) != 1 || result.Allocations[0].Amount != brl(32739) || result.Allocations[0].Label != "Mercado" || result.Allocations[0].Origin != ledger.AuthorAgent {
-		t.Errorf("allocations = %+v", result.Allocations)
-	}
-}
-
-func TestASplitMustMatchTheAmountToTheCent(t *testing.T) {
-	f := newFixture(t)
-	created, _ := f.transaction("message-1")
-
-	_, err := f.categorize(created, split("groceries", 30000, "convenience_snacks", 2738), ledger.AllocationConfirmed, rudolfo)
-
-	assertValidation(t, err, "categories")
-	var validation *ledger.ValidationError
-	if errors.As(err, &validation) && !strings.Contains(validation.Message, "R$ 327,38") {
-		t.Errorf("message = %q, want the split total", validation.Message)
+	if result.Category.Code != "groceries" || result.Category.Label != "Mercado" || result.Category.Amount != brl(32739) || result.Category.Origin != ledger.AuthorAgent {
+		t.Errorf("category = %+v", result.Category)
 	}
 
-	result, err := f.categorize(created, split("groceries", 30000, "convenience_snacks", 2739), ledger.AllocationConfirmed, rudolfo)
-	if err != nil || len(result.Allocations) != 2 {
-		t.Fatalf("exact split = %+v, %v", result, err)
+	changed, err := f.categorize(created, "convenience_snacks", ledger.AllocationConfirmed, rudolfo)
+	if err != nil || !changed.Changed || changed.Category.Code != "convenience_snacks" {
+		t.Fatalf("recategorize = %+v, %v", changed, err)
+	}
+	current, err := f.ledger.CategoryOf(t.Context(), f.account, created.ID)
+	if err != nil || current.Code != "convenience_snacks" || current.Status != ledger.AllocationConfirmed {
+		t.Errorf("CategoryOf() = %+v, %v", current, err)
 	}
 }
 
@@ -85,29 +85,29 @@ func TestATransactionWithoutCategoryCountsAsUnidentified(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
 
-	allocations, err := f.ledger.Allocations(t.Context(), f.account, created.ID)
+	category, err := f.ledger.CategoryOf(t.Context(), f.account, created.ID)
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allocations) != 1 || allocations[0].Code != "unidentified" || allocations[0].Label != "Não identificado" || allocations[0].Amount != brl(32739) || allocations[0].Status != ledger.AllocationMissing {
-		t.Errorf("allocations = %+v", allocations)
+	if category.Code != "unidentified" || category.Label != "Não identificado" || category.Amount != brl(32739) || category.Status != ledger.AllocationMissing {
+		t.Errorf("category = %+v", category)
 	}
 }
 
 func TestACategoryConfirmedByRudolfoIsNotOverwrittenWhenThePurchaseIsCheckedAgain(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
-	if _, err := f.categorize(created, []ledger.Split{{Code: "convenience_snacks"}}, ledger.AllocationConfirmed, rudolfo); err != nil {
+	if _, err := f.categorize(created, "convenience_snacks", ledger.AllocationConfirmed, rudolfo); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, author := range []ledger.Author{ledger.AuthorAgent, ledger.AuthorRule} {
-		result, err := f.categorize(created, []ledger.Split{{Code: "fuel"}}, ledger.AllocationSuggested, ledger.Actor{Author: author})
+		result, err := f.categorize(created, "fuel", ledger.AllocationSuggested, ledger.Actor{Author: author})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Changed || result.Conflict == nil || result.Allocations[0].Code != "convenience_snacks" {
+		if result.Changed || result.Conflict == nil || result.Category.Code != "convenience_snacks" {
 			t.Errorf("%s recategorization = %+v, want the confirmed category kept and a conflict", author, result)
 		}
 	}
@@ -121,7 +121,7 @@ func TestOnlyRudolfoConfirmsACategory(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
 
-	_, err := f.categorize(created, []ledger.Split{{Code: "groceries"}}, ledger.AllocationConfirmed, agent)
+	_, err := f.categorize(created, "groceries", ledger.AllocationConfirmed, agent)
 
 	assertValidation(t, err, "category_status")
 }
@@ -130,7 +130,7 @@ func TestUnknownAndArchivedCategoriesAreRejectedWithTheValidCodes(t *testing.T) 
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
 
-	_, err := f.categorize(created, []ledger.Split{{Code: "pets"}}, ledger.AllocationSuggested, agent)
+	_, err := f.categorize(created, "pets", ledger.AllocationSuggested, agent)
 	var validation *ledger.ValidationError
 	if !errors.As(err, &validation) || !strings.Contains(validation.Message, "groceries") {
 		t.Errorf("unknown category error = %v, want the valid codes", err)
@@ -139,8 +139,8 @@ func TestUnknownAndArchivedCategoriesAreRejectedWithTheValidCodes(t *testing.T) 
 	if _, err := f.ledger.ArchiveCategory(t.Context(), f.account, "education"); err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.categorize(created, []ledger.Split{{Code: "education"}}, ledger.AllocationSuggested, agent)
-	assertValidation(t, err, "categories")
+	_, err = f.categorize(created, "education", ledger.AllocationSuggested, agent)
+	assertValidation(t, err, "category")
 	_, err = f.ledger.ArchiveCategory(t.Context(), f.account, "unidentified")
 	assertValidation(t, err, "code")
 }
@@ -160,10 +160,10 @@ func TestCategoriesCanBeCreatedAndRenamed(t *testing.T) {
 	assertValidation(t, err, "code")
 }
 
-func TestASingleCategoryFollowsAnAmountCorrection(t *testing.T) {
+func TestTheCategoryFollowsAnAmountCorrection(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
-	if _, err := f.categorize(created, []ledger.Split{{Code: "groceries"}}, ledger.AllocationConfirmed, rudolfo); err != nil {
+	if _, err := f.categorize(created, "groceries", ledger.AllocationConfirmed, rudolfo); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,58 +172,37 @@ func TestASingleCategoryFollowsAnAmountCorrection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(correction.Categories) != 1 || correction.Categories[0].Amount != brl(10000) || correction.Categories[0].Status != ledger.AllocationConfirmed {
-		t.Errorf("categories = %+v", correction.Categories)
+	if correction.Category.Code != "groceries" || correction.Category.Amount != brl(10000) || correction.Category.Status != ledger.AllocationConfirmed {
+		t.Errorf("category = %+v", correction.Category)
 	}
 }
 
-func TestASplitNeedsANewSplitWhenTheAmountChanges(t *testing.T) {
+func TestTheDatabaseKeepsOneCategoryMatchingTheAmount(t *testing.T) {
 	f := newFixture(t)
 	created, _ := f.transaction("message-1")
-	if _, err := f.categorize(created, split("groceries", 30000, "convenience_snacks", 2739), ledger.AllocationConfirmed, rudolfo); err != nil {
+	if _, err := f.categorize(created, "groceries", ledger.AllocationSuggested, agent); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := f.ledger.Correct(t.Context(), f.account, created.ID, ledger.Patch{Amount: ptr(brl(10000))}, "valor errado", rudolfo)
-	assertValidation(t, err, "categories")
-
-	correction, err := f.ledger.Correct(t.Context(), f.account, created.ID, ledger.Patch{
-		Amount:     ptr(brl(10000)),
-		Categories: split("groceries", 8000, "convenience_snacks", 2000),
-	}, "valor errado", rudolfo)
-	if err != nil || len(correction.Categories) != 2 {
-		t.Fatalf("correction with split = %+v, %v", correction, err)
-	}
-}
-
-func TestTheDatabaseRefusesAllocationsThatDoNotMatchTheAmount(t *testing.T) {
-	f := newFixture(t)
-	created, _ := f.transaction("message-1")
-	if _, err := f.categorize(created, []ledger.Split{{Code: "groceries"}}, ledger.AllocationSuggested, agent); err != nil {
-		t.Fatal(err)
-	}
-	conn, err := pgx.Connect(t.Context(), f.databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close(context.Background()) }()
-
-	err = pgx.BeginFunc(t.Context(), conn, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(t.Context(), "SET LOCAL ROLE lastro_app"); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(t.Context(), "SELECT set_config('app.account_id', $1, true)", f.account.String()); err != nil {
-			return err
-		}
+	amountErr := f.asTenant(func(tx pgx.Tx) error {
 		_, err := tx.Exec(t.Context(), "UPDATE transactions SET amount_minor = 100 WHERE id = $1", created.ID)
+		return err
+	})
+	secondErr := f.asTenant(func(tx pgx.Tx) error {
+		_, err := tx.Exec(t.Context(), `
+			INSERT INTO category_allocations (id, account_id, transaction_id, category_id, amount_minor, status, origin)
+			SELECT uuidv7(), account_id, $1, id, 1, 'suggested', 'agent' FROM categories WHERE code = 'meals'`, created.ID)
 		return err
 	})
 
 	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "category_allocations_match_amount" {
-		t.Errorf("commit error = %v, want the allocation constraint", err)
+	if !errors.As(amountErr, &pgErr) || pgErr.ConstraintName != "category_allocations_match_amount" {
+		t.Errorf("changing the amount behind the category error = %v, want the amount constraint", amountErr)
 	}
-	if detail, _ := f.ledger.GetTransaction(t.Context(), f.account, created.ID); detail.Amount != brl(32739) {
-		t.Errorf("amount = %s, want unchanged", detail.Amount)
+	if !errors.As(secondErr, &pgErr) || pgErr.ConstraintName != "category_allocations_one_current_idx" {
+		t.Errorf("a second current category error = %v, want the single-category index", secondErr)
+	}
+	if detail, _ := f.ledger.GetTransaction(t.Context(), f.account, created.ID); detail.Amount != brl(32739) || detail.Category.Code != "groceries" {
+		t.Errorf("transaction = %+v, want unchanged", detail)
 	}
 }

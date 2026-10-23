@@ -17,26 +17,25 @@ import (
 var clearableFields = []any{"merchant", "payee", "payment_method", "purpose", "installments", "date"}
 
 type UpdateTransactionInput struct {
-	TransactionID     string         `json:"transaction_id"`
-	RequestID         string         `json:"request_id" jsonschema:"generated once for this correction and reused on every retry"`
-	Reason            string         `json:"reason" jsonschema:"what Rudolfo asked, in Portuguese; kept in the history"`
-	Description       string         `json:"description,omitempty"`
-	Merchant          string         `json:"merchant,omitempty"`
-	Payee             string         `json:"payee,omitempty"`
-	Amount            string         `json:"amount,omitempty" jsonschema:"new total as a canonical decimal; the original stays in the evidence"`
-	Currency          string         `json:"currency,omitempty" jsonschema:"ISO 4217 code of the new amount; defaults to the current currency"`
-	MessageAt         string         `json:"message_at,omitempty" jsonschema:"when Rudolfo sent the correction, RFC 3339, for date_reference"`
-	DateReference     string         `json:"date_reference,omitempty"`
-	OccurredAt        string         `json:"occurred_at,omitempty" jsonschema:"RFC 3339 with offset"`
-	OccurredOn        string         `json:"occurred_on,omitempty" jsonschema:"YYYY-MM-DD"`
-	PaymentMethod     string         `json:"payment_method,omitempty"`
-	CardLast4         string         `json:"card_last4,omitempty"`
-	Nature            string         `json:"nature,omitempty"`
-	Purpose           string         `json:"purpose,omitempty"`
-	InstallmentCount  int            `json:"installment_count,omitempty"`
-	InstallmentAmount string         `json:"installment_amount,omitempty"`
-	Categories        []CategoryPart `json:"categories,omitempty" jsonschema:"new split, required when the amount of a split transaction changes"`
-	Clear             []string       `json:"clear,omitempty" jsonschema:"fields Rudolfo said are not known after all"`
+	TransactionID     string   `json:"transaction_id"`
+	RequestID         string   `json:"request_id" jsonschema:"generated once for this correction and reused on every retry"`
+	Reason            string   `json:"reason" jsonschema:"what Rudolfo asked, in Portuguese; kept in the history"`
+	Description       string   `json:"description,omitempty"`
+	Merchant          string   `json:"merchant,omitempty"`
+	Payee             string   `json:"payee,omitempty"`
+	Amount            string   `json:"amount,omitempty" jsonschema:"new total as a canonical decimal; the original stays in the evidence"`
+	Currency          string   `json:"currency,omitempty" jsonschema:"ISO 4217 code of the new amount; defaults to the current currency"`
+	MessageAt         string   `json:"message_at,omitempty" jsonschema:"when Rudolfo sent the correction, RFC 3339, for date_reference"`
+	DateReference     string   `json:"date_reference,omitempty"`
+	OccurredAt        string   `json:"occurred_at,omitempty" jsonschema:"RFC 3339 with offset"`
+	OccurredOn        string   `json:"occurred_on,omitempty" jsonschema:"YYYY-MM-DD"`
+	PaymentMethod     string   `json:"payment_method,omitempty"`
+	CardLast4         string   `json:"card_last4,omitempty"`
+	Nature            string   `json:"nature,omitempty"`
+	Purpose           string   `json:"purpose,omitempty"`
+	InstallmentCount  int      `json:"installment_count,omitempty"`
+	InstallmentAmount string   `json:"installment_amount,omitempty"`
+	Clear             []string `json:"clear,omitempty" jsonschema:"fields Rudolfo said are not known after all"`
 }
 
 type CorrectionOutput struct {
@@ -51,11 +50,11 @@ func (o CorrectionOutput) reportedOutcome() Outcome {
 }
 
 type SetCategoryInput struct {
-	TransactionID  string         `json:"transaction_id"`
-	RequestID      string         `json:"request_id" jsonschema:"generated once for this classification and reused on every retry"`
-	Categories     []CategoryPart `json:"categories" jsonschema:"one category, or an exact split whose amounts add up to the transaction"`
-	CategoryStatus string         `json:"category_status,omitempty" jsonschema:"confirmed (default) when Rudolfo said it; suggested when you classified"`
-	Reason         string         `json:"reason,omitempty" jsonschema:"kept in the history"`
+	TransactionID  string `json:"transaction_id"`
+	RequestID      string `json:"request_id" jsonschema:"generated once for this classification and reused on every retry"`
+	Category       string `json:"category" jsonschema:"category code from list_categories"`
+	CategoryStatus string `json:"category_status,omitempty" jsonschema:"confirmed (default) when Rudolfo said it; suggested when you classified"`
+	Reason         string `json:"reason,omitempty" jsonschema:"kept in the history"`
 }
 
 type VoidTransactionInput struct {
@@ -153,7 +152,7 @@ func (s *Server) registerTransactions() {
 		}
 		return CorrectionOutput{
 			Outcome:     OutcomeCompleted,
-			Transaction: transactionOutput(correction.Transaction, correction.Categories),
+			Transaction: transactionOutput(correction.Transaction, &correction.Category),
 			Changed:     changed,
 			Summary:     correctionSummary(correction),
 		}, nil
@@ -162,7 +161,7 @@ func (s *Server) registerTransactions() {
 	addTool(s, toolSpec{
 		name:        "set_category",
 		title:       "Classify a transaction",
-		description: "Sets the category of a transaction, or splits it between categories with amounts that add up exactly to its total. Rudolfo's classification is confirmed and is never replaced by later suggestions.",
+		description: "Sets the category of a transaction. Each transaction has a single category. Rudolfo's classification is confirmed and is never replaced by later suggestions.",
 		scope:       accounts.ScopeExpensesWrite,
 		idempotent:  true,
 		enums:       map[string][]any{"category_status": {"suggested", "confirmed"}},
@@ -178,7 +177,7 @@ func (s *Server) registerTransactions() {
 		if strings.TrimSpace(in.Reason) != "" {
 			reason = in.Reason
 		}
-		result, err := s.deps.Ledger.Categorize(ctx, c.principal.AccountID, id, splitFrom(in.Categories), status, reason, c.actor(author, in.RequestID))
+		result, err := s.deps.Ledger.Categorize(ctx, c.principal.AccountID, id, in.Category, status, reason, c.actor(author, in.RequestID))
 		if err != nil {
 			return CorrectionOutput{}, err
 		}
@@ -186,15 +185,15 @@ func (s *Server) registerTransactions() {
 		if err != nil {
 			return CorrectionOutput{}, err
 		}
-		out := CorrectionOutput{Outcome: OutcomeCompleted, Transaction: transactionOutput(detail.Transaction, detail.Categories), Changed: []string{}}
+		out := CorrectionOutput{Outcome: OutcomeCompleted, Transaction: transactionOutput(detail.Transaction, &detail.Category), Changed: []string{}}
 		switch {
 		case result.Conflict != nil:
 			out.Summary = "A categoria confirmada por Rudolfo foi mantida; a sugestão virou uma dúvida."
 		case result.Changed:
 			out.Changed = []string{"category"}
-			out.Summary = fmt.Sprintf("Classifiquei \"%s\" como %s.", detail.Description, allocationText(detail.Categories))
+			out.Summary = fmt.Sprintf("Classifiquei \"%s\" como %s.", detail.Description, detail.Category.Label)
 		default:
-			out.Summary = fmt.Sprintf("\"%s\" já estava classificado como %s.", detail.Description, allocationText(detail.Categories))
+			out.Summary = fmt.Sprintf("\"%s\" já estava classificado como %s.", detail.Description, detail.Category.Label)
 		}
 		return out, nil
 	})
@@ -275,7 +274,7 @@ func (s *Server) registerTransactions() {
 		}
 		out := ListTransactionsOutput{Transactions: []TransactionOutput{}, Count: len(listed)}
 		for _, transaction := range listed {
-			out.Transactions = append(out.Transactions, transactionOutput(transaction.Transaction, transaction.Categories))
+			out.Transactions = append(out.Transactions, transactionOutput(transaction.Transaction, &transaction.Category))
 		}
 		switch len(listed) {
 		case 0:
@@ -342,7 +341,6 @@ func (s *Server) patchFrom(ctx context.Context, c call, in UpdateTransactionInpu
 	case cleared("installments"):
 		patch.Installments = ledger.Cleared[ledger.Installments]()
 	}
-	patch.Categories = splitFrom(in.Categories)
 	if emptyPatch(patch) {
 		return patch, invalid("transaction_id", "the call changes nothing: send at least one field to correct")
 	}
@@ -409,7 +407,7 @@ func optionalField(value string, cleared bool) ledger.Optional[string] {
 
 func emptyPatch(p ledger.Patch) bool {
 	return p.Description == nil && !p.Merchant.Set && !p.Payee.Set && p.Amount == nil && p.Occurred == nil &&
-		!p.PaymentMethod.Set && p.Nature == nil && !p.Purpose.Set && !p.Installments.Set && p.Categories == nil
+		!p.PaymentMethod.Set && p.Nature == nil && !p.Purpose.Set && !p.Installments.Set
 }
 
 func correctionSummary(correction ledger.Correction) string {
@@ -421,17 +419,6 @@ func correctionSummary(correction ledger.Correction) string {
 		labels[i] = ledger.FieldLabel(field)
 	}
 	return fmt.Sprintf("Atualizei %s de \"%s\".", joinPortuguese(labels), correction.Transaction.Description)
-}
-
-func allocationText(allocations []ledger.Allocation) string {
-	parts := make([]string, len(allocations))
-	for i, a := range allocations {
-		parts[i] = a.Label
-		if len(allocations) > 1 {
-			parts[i] += " (" + a.Amount.Format() + ")"
-		}
-	}
-	return joinPortuguese(parts)
 }
 
 func joinPortuguese(items []string) string {
@@ -447,7 +434,7 @@ func joinPortuguese(items []string) string {
 
 func detailOutput(detail ledger.TransactionDetail) TransactionDetailOutput {
 	out := TransactionDetailOutput{
-		Transaction: transactionOutput(detail.Transaction, detail.Categories),
+		Transaction: transactionOutput(detail.Transaction, &detail.Category),
 		Evidence:    []EvidenceOutput{},
 		History:     []RevisionOutput{},
 	}

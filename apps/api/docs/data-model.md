@@ -16,7 +16,7 @@ erDiagram
     payment_methods |o--o{ observation_interpretations : mentions
     transactions |o--o{ transactions : "refund_of / merged_into"
     accounts ||--o{ categories : classifies
-    transactions ||--o{ category_allocations : "is split into"
+    transactions ||--o{ category_allocations : "is classified by"
     categories ||--o{ category_allocations : receives
     transactions |o--o{ clarifications : "raises"
     observations |o--o{ clarifications : "raises"
@@ -104,7 +104,7 @@ erDiagram
         uuid id PK
         uuid transaction_id FK
         uuid category_id FK
-        bigint amount_minor "current parts add up to the transaction"
+        bigint amount_minor "the whole transaction amount"
         text status "suggested, confirmed"
         text origin "agent, rule, user"
         timestamptz superseded_at
@@ -148,6 +148,6 @@ Outside the diagram: `tool_calls` and `api_requests` audit every MCP tool call a
 - **Amounts are positive magnitudes.** The `nature` gives the direction: `credit` and `refund` bring money back; the others take it out. Foreign purchases keep the original amount and currency next to the charged one; the two never share a currency.
 - **Dates keep their precision.** `occurred_at` exists only for `exact`; `occurred_on` is null only for `unknown`; `month` dates sit on the first day of the month.
 - **Merges keep both sides.** `status = 'merged'` exactly when `merged_into_id` is set, so the merged transaction and its evidence remain queryable and the merge can be undone.
-- **Allocations add up.** Deferred constraint triggers refuse, at commit, any state in which the current `category_allocations` of a transaction do not add up to its amount.
+- **One category per transaction.** A transaction has at most one current row in `category_allocations` (`category_allocations_one_current_idx`), and deferred constraint triggers refuse, at commit, a category whose amount differs from the transaction's. Older rows are superseded, never deleted.
 - **History is append-only.** `revisions`, `idempotency_keys`, `tool_calls` and `api_requests` have no `UPDATE` for the application role.
 - **Field provenance.** For each field of a transaction, `field_provenance` names the observation it came from and whether Rudolfo confirmed it; confirmed fields are protected from automatic overwrites. Categories carry their own status and origin in `category_allocations`.

@@ -48,7 +48,7 @@ func TestExpensesWithoutCategoryAreListedAsClarifications(t *testing.T) {
 		t.Errorf("question = %q", open[0].Question)
 	}
 
-	if _, err := f.categorize(created, []ledger.Split{{Code: "groceries"}}, ledger.AllocationSuggested, agent); err != nil {
+	if _, err := f.categorize(created, "groceries", ledger.AllocationSuggested, agent); err != nil {
 		t.Fatal(err)
 	}
 	if open := f.openClarifications(ledger.ClarificationCategoryUnknown); len(open) != 0 {
@@ -117,17 +117,20 @@ func TestResolvingAMissingCategoryNeedsTheCategory(t *testing.T) {
 	open := f.openClarifications(ledger.ClarificationCategoryUnknown)
 
 	_, err := f.ledger.ResolveClarification(t.Context(), f.account, open[0].ID, ledger.Resolution{Action: ledger.ResolutionResolve, Note: "é mercado"}, rudolfo)
-	assertValidation(t, err, "categories")
+	assertValidation(t, err, "category")
 
 	resolved, err := f.ledger.ResolveClarification(t.Context(), f.account, open[0].ID, ledger.Resolution{
-		Action: ledger.ResolutionResolve, Note: "é mercado", Categories: []ledger.Split{{Code: "groceries"}},
+		Action: ledger.ResolutionResolve, Note: "é mercado", Category: ptr("groceries"),
 	}, rudolfo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	allocations, err := f.ledger.Allocations(t.Context(), f.account, created.ID)
-	if err != nil || allocations[0].Code != "groceries" || allocations[0].Status != ledger.AllocationConfirmed {
-		t.Errorf("allocations = %+v, %v", allocations, err)
+	category, err := f.ledger.CategoryOf(t.Context(), f.account, created.ID)
+	if err != nil || category.Code != "groceries" || category.Status != ledger.AllocationConfirmed {
+		t.Errorf("category = %+v, %v", category, err)
+	}
+	if resolved.Correction == nil || resolved.Correction.Category.Code != "groceries" {
+		t.Errorf("resolution = %+v", resolved.Correction)
 	}
 	if _, err := f.ledger.ResolveClarification(t.Context(), f.account, resolved.Clarification.ID, ledger.Resolution{Action: ledger.ResolutionDismiss, Note: "de novo"}, rudolfo); !errors.Is(err, ledger.ErrClarificationClosed) {
 		t.Errorf("closing twice error = %v, want ErrClarificationClosed", err)
@@ -149,9 +152,9 @@ func TestADismissedClarificationIsNotAskedAgainForTheSameCause(t *testing.T) {
 	if open := f.openClarifications(ledger.ClarificationCategoryUnknown); len(open) != 0 {
 		t.Errorf("dismissed clarification came back: %+v", open)
 	}
-	allocations, _ := f.ledger.Allocations(t.Context(), f.account, created.ID)
-	if allocations[0].Code != "unidentified" {
-		t.Errorf("allocations = %+v, want it still counted as unidentified", allocations)
+	category, _ := f.ledger.CategoryOf(t.Context(), f.account, created.ID)
+	if category.Code != "unidentified" {
+		t.Errorf("category = %+v, want it still counted as unidentified", category)
 	}
 }
 

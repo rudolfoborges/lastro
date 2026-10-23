@@ -192,7 +192,7 @@ Changing the payment method re-applies the status rule: credit card purchases st
 
 Every account starts with the categories of the PRD (`internal/taxonomy`); codes are English (`groceries`, `convenience_snacks`…) and labels are pt-BR display data. Categories can be created, renamed and archived per account; `unidentified` cannot be archived.
 
-A transaction's categories are `category_allocations`: one or more parts whose amounts add up **exactly** to the transaction amount, each `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Replacing them supersedes the old rows, which stay for history, and writes a `category` revision. The service rejects a split that does not match to the cent with the totals in the message, and deferred constraint triggers enforce the same rule at commit. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, a single category follows it; a split must be sent again with the new amount. A transaction without allocations counts in full as "Não identificado" (`EffectiveAllocations`).
+Each transaction has **one category**, stored in `category_allocations` as a single current row covering the whole amount. It is `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Changing it supersedes the old row, which stays for history, and writes a `category` revision. The database keeps at most one current category per transaction (`category_allocations_one_current_idx`), and deferred constraint triggers refuse at commit a category whose amount differs from the transaction's. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, the category follows it. A transaction without a category counts in full as "Não identificado" (`EffectiveCategory`). Splitting a purchase between categories was left out of the first delivery (#83, D8).
 
 ### Recording from the conversation
 
@@ -265,7 +265,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
 | `update_transaction` | `expenses:write` | Corrects description, merchant, payee, amount, date, payment method, nature, purpose or installments, with a reason |
-| `set_category` | `expenses:write` | Sets one category or an exact split (confirmed by Rudolfo, or suggested by Case) |
+| `set_category` | `expenses:write` | Sets the transaction's category (confirmed by Rudolfo, or suggested by Case) |
 | `void_transaction` | `expenses:write` | Marks a record made by mistake as voided; nothing is deleted |
 | `get_transaction` | `expenses:read` | Transaction with categories, evidence, full history and open questions |
 | `list_transactions` | `expenses:read` | Lists by purchase period, status, category and payment method, without totals |

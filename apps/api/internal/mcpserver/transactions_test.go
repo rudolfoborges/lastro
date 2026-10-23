@@ -63,30 +63,30 @@ func TestSetCategoryConfirmsAndClosesTheQuestion(t *testing.T) {
 	delete(args, "category")
 	recorded := e.recorded(session, args)
 
-	split := callTool[mcpserver.CorrectionOutput](t, session, "set_category", map[string]any{
+	classified := callTool[mcpserver.CorrectionOutput](t, session, "set_category", map[string]any{
 		"transaction_id": recorded.ID,
 		"request_id":     "classify-1",
-		"categories":     []map[string]any{{"category": "groceries", "amount": "300.00"}, {"category": "convenience_snacks", "amount": "27.39"}},
+		"category":       "convenience_snacks",
 	}, nil)
 
-	if split.isError || len(split.out.Transaction.Categories) != 2 || split.out.Transaction.Categories[0].Status != "confirmed" {
-		t.Fatalf("set_category = %+v", split)
+	if classified.isError || classified.out.Transaction.Category.Code != "convenience_snacks" || classified.out.Transaction.Category.Status != "confirmed" {
+		t.Fatalf("set_category = %+v", classified)
 	}
-	if !strings.Contains(split.out.Summary, "Mercado (R$ 300,00) e Conveniência — bebidas e snacks (R$ 27,39)") {
-		t.Errorf("summary = %q", split.out.Summary)
+	if classified.out.Summary != `Classifiquei "Compra no mercado" como Conveniência — bebidas e snacks.` {
+		t.Errorf("summary = %q", classified.out.Summary)
 	}
 	open := callTool[mcpserver.ListClarificationsOutput](t, session, "list_clarifications", map[string]any{"kind": "category_unknown"}, nil)
 	if open.out.Count != 0 {
 		t.Errorf("category question still open: %+v", open.out)
 	}
 
-	wrong := callTool[mcpserver.CorrectionOutput](t, session, "set_category", map[string]any{
+	unknown := callTool[mcpserver.CorrectionOutput](t, session, "set_category", map[string]any{
 		"transaction_id": recorded.ID,
 		"request_id":     "classify-2",
-		"categories":     []map[string]any{{"category": "groceries", "amount": "300.00"}, {"category": "meals", "amount": "27.00"}},
+		"category":       "pets",
 	}, nil)
-	if !wrong.isError || wrong.toolErr.Field != "categories" || !strings.Contains(wrong.toolErr.Message, "R$ 327,00") {
-		t.Errorf("unbalanced split = %+v", wrong)
+	if !unknown.isError || unknown.toolErr.Field != "category" || !strings.Contains(unknown.toolErr.Message, "groceries") {
+		t.Errorf("unknown category = %+v", unknown)
 	}
 }
 
