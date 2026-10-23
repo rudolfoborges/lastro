@@ -161,6 +161,7 @@ type NewObservation struct {
 	Source      Source
 	SourceKey   string
 	Payload     map[string]any
+	Redactions  []redaction.Finding
 	Fingerprint []byte
 	ReceivedAt  time.Time
 }

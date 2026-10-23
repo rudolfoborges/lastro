@@ -14,6 +14,7 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
 	"github.com/rudolfoborges/lastro/apps/api/internal/httpapi"
+	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/storetest"
 )
@@ -55,6 +56,7 @@ func newTestAPI(t *testing.T, limits config.RateLimits) *testAPI {
 		Logger:     slog.New(slog.NewJSONHandler(logs, nil)),
 		Database:   db,
 		Accounts:   svc,
+		Ledger:     ledger.NewService(db),
 		RateLimits: limits,
 	})
 	return &testAPI{t: t, handler: handler, accounts: svc, logs: logs}

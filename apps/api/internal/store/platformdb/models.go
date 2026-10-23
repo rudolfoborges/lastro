@@ -264,3 +264,33 @@ type TransactionEvidence struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+type WalletDevice struct {
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	DeviceID       string
+	DiscardedCount int64
+	LastReceivedAt time.Time
+	CreatedAt      time.Time
+}
+
+type WalletNotification struct {
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	WalletDeviceID  uuid.UUID
+	NotificationKey string
+	Package         string
+	RemovedAt       *time.Time
+	CreatedAt       time.Time
+}
+
+type WalletNotificationVersion struct {
+	AccountID      uuid.UUID
+	NotificationID uuid.UUID
+	Version        int32
+	ObservationID  uuid.UUID
+	ContentHash    []byte
+	Event          string
+	PostedAt       time.Time
+	ReceivedAt     time.Time
+}

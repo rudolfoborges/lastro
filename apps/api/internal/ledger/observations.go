@@ -46,7 +46,7 @@ func (t *tx) recordObservation(in NewObservation) (Observation, error) {
 	if err != nil {
 		return Observation{}, fmt.Errorf("encode observation payload: %w", err)
 	}
-	redactionsJSON, err := json.Marshal(findings)
+	redactionsJSON, err := json.Marshal(redaction.Merge(in.Redactions, findings))
 	if err != nil {
 		return Observation{}, fmt.Errorf("encode redactions: %w", err)
 	}

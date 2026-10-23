@@ -90,6 +90,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `GET /v1/api-keys` | `admin` | Lists the account's keys, never their tokens |
 | `POST /v1/api-keys` | `admin` | Creates a key with the given scopes and returns its token once |
 | `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately; the last active `admin` key cannot be revoked |
+| `POST /v1/wallet/notifications` | `wallet:ingest` | Receives one notification event from the Android app (see [Wallet notifications](#wallet-notifications)) |
 
 Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
 
@@ -217,6 +218,30 @@ Questions for Rudolfo are rows in `clarifications` (kind, target transaction or 
 - Voiding a transaction dismisses its open questions.
 
 Resolving needs the missing data (categories or purpose), which is applied as Rudolfo's correction; dismissing changes nothing. Both are written to the transaction history. The other kinds (`possible_match`, `reading_doubt`, `statement_*`…) are opened by the notification, statement and reconciliation features.
+
+### Wallet notifications
+
+The Android app sends each notification event to `POST /v1/wallet/notifications` with an API key scoped `wallet:ingest`:
+
+```json
+{
+  "device_id": "galaxy-s24",
+  "package": "com.google.android.apps.walletnfcrel",
+  "notification_key": "0|com.google.android.apps.walletnfcrel|7|null|10123",
+  "event": "posted",
+  "posted_at": "2026-10-22T15:04:05Z",
+  "title": "…",
+  "text": "…",
+  "big_text": "…",
+  "sent_at": "2026-10-22T15:04:25Z"
+}
+```
+
+- `sent_at` is the device time when the request is sent, accepted only within 5 minutes of the server time (`400 stale_request` otherwise). There is no HMAC: the key is the credential. A retry sends a fresh `sent_at`; the rest of the body stays the same.
+- Notifications from packages other than Google Wallet are not stored: the answer is `discarded` and only `wallet_devices.discarded_count` grows.
+- Title, text and big text are redacted before anything is persisted, and each version becomes an immutable observation `wallet_notification` pending interpretation by Case. The server never reads the text.
+- Identity is `(device_id, notification_key)` plus a hash of the redacted package, title, texts and `posted_at`. The same content again answers `200 duplicate` and writes nothing; different content (an update, or another post under a reused key) answers `201 stored` with the next `version` of the same notification.
+- `removed` only records `removed_at` on the notification. It is never treated as a cancellation and changes no transaction; a removal of a notification the server never stored answers `unknown_notification`.
 
 ### Idempotency
 

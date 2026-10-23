@@ -32,7 +32,8 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 	defer db.Close()
 
 	accountsService := accounts.NewService(db)
-	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledger.NewService(db), Logger: logger})
+	ledgerService := ledger.NewService(db)
+	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledgerService, Logger: logger})
 	authorization := oauth.New(db, accountsService, logger, oauth.Config{
 		Issuer:        cfg.PublicBaseURL,
 		RedirectHosts: cfg.OAuth.RedirectHosts,
@@ -45,6 +46,7 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 			Logger:            logger,
 			Database:          db,
 			Accounts:          accountsService,
+			Ledger:            ledgerService,
 			RateLimits:        cfg.RateLimits,
 			TrustProxyHeaders: cfg.TrustProxyHeaders,
 			MCP:               mcp.HTTPHandler(),

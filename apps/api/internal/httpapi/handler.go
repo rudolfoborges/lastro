@@ -8,6 +8,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/oauth"
 )
 
@@ -21,6 +22,7 @@ type Deps struct {
 	Logger            *slog.Logger
 	Database          Pinger
 	Accounts          *accounts.Service
+	Ledger            *ledger.Service
 	RateLimits        config.RateLimits
 	TrustProxyHeaders bool
 	MCP               http.Handler
@@ -30,6 +32,7 @@ type Deps struct {
 type api struct {
 	logger            *slog.Logger
 	accounts          *accounts.Service
+	ledger            *ledger.Service
 	keyLimits         *limiterSet
 	clientLimits      *limiterSet
 	trustProxyHeaders bool
@@ -40,6 +43,7 @@ func NewHandler(deps Deps) http.Handler {
 	a := &api{
 		logger:            deps.Logger,
 		accounts:          deps.Accounts,
+		ledger:            deps.Ledger,
 		keyLimits:         newLimiterSet(deps.RateLimits.PerKeyPerMinute),
 		clientLimits:      newLimiterSet(deps.RateLimits.UnauthenticatedPerMinute),
 		trustProxyHeaders: deps.TrustProxyHeaders,
@@ -56,6 +60,10 @@ func NewHandler(deps Deps) http.Handler {
 	mux.HandleFunc("GET /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleListKeys))
 	mux.HandleFunc("POST /v1/api-keys", a.authenticated(accounts.ScopeAdmin, a.handleCreateKey))
 	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeKey))
+
+	if deps.Ledger != nil {
+		mux.HandleFunc("POST /v1/wallet/notifications", a.authenticated(accounts.ScopeWalletIngest, a.handleWalletNotification))
+	}
 
 	if deps.MCP != nil {
 		mux.Handle("/mcp", a.mcpEndpoint(deps.MCP))
