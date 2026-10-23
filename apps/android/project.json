@@ -1,0 +1,55 @@
+{
+  "name": "android",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/android/app/src",
+  "tags": [
+    "lang:kotlin",
+    "type:app"
+  ],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "production"
+      ],
+      "outputs": [
+        "{projectRoot}/app/build/outputs/apk/debug"
+      ],
+      "options": {
+        "cwd": "apps/android",
+        "command": "./gradlew :app:assembleDebug"
+      }
+    },
+    "release": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/android",
+        "command": "./gradlew :app:assembleRelease"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default"
+      ],
+      "options": {
+        "cwd": "apps/android",
+        "command": "./gradlew :app:testDebugUnitTest"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default"
+      ],
+      "options": {
+        "cwd": "apps/android",
+        "command": "./gradlew :app:lintDebug"
+      }
+    }
+  }
+}
