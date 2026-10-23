@@ -277,6 +277,18 @@ type WalletDevice struct {
 	CreatedAt      time.Time
 }
 
+type WalletHeartbeat struct {
+	ID                  uuid.UUID
+	AccountID           uuid.UUID
+	WalletDeviceID      uuid.UUID
+	ReceivedAt          time.Time
+	SentAt              time.Time
+	ClientVersion       string
+	NotificationAccess  bool
+	BatteryUnrestricted *bool
+	QueueSize           *int32
+}
+
 type WalletNotification struct {
 	ID              uuid.UUID
 	AccountID       uuid.UUID
@@ -296,4 +308,12 @@ type WalletNotificationVersion struct {
 	Event          string
 	PostedAt       time.Time
 	ReceivedAt     time.Time
+}
+
+type WalletTrackingPeriod struct {
+	ID                   uuid.UUID
+	AccountID            uuid.UUID
+	StartedAt            time.Time
+	EndedAt              *time.Time
+	InboxIntervalMinutes int32
 }

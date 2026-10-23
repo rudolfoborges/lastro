@@ -53,6 +53,11 @@ Each item comes back with `outcome` and `result`:
   - `already_interpreted`: this version already has a different reading. If your reading changed (for example Rudolfo said it was only an alert), send it again with `reinterpret: true` and a short `reason` in Portuguese. The earlier effect is reverted: a purchase created from it is voided, and an update corrects the same transaction.
   - `reinterpretation_not_supported`: fix the transactions with `update_transaction` or `void_transaction`.
 
+## Tracking and coverage
+
+- Automatic tracking starts **disabled**. Turn it on, pause or resume it with `set_tracking` only when Rudolfo asks. Send `inbox_interval_minutes` with the interval of his routine, so a late inbox is flagged at twice that interval. While paused, the phone's notifications are dropped and everything already recorded stays available.
+- Before answering how much Rudolfo spent in a period, call `get_coverage_status` for those days. If `complete` is false, tell him each item of `limitations` together with the numbers. Never say there was no spending only because no notification arrived.
+
 ## Never
 
 - Never treat `removed: true` as a cancellation: Rudolfo only dismissed it on the phone.

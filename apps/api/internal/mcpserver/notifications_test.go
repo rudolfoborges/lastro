@@ -18,6 +18,9 @@ var notificationPostedAt = time.Date(2026, 10, 21, 18, 4, 5, 0, time.UTC)
 
 func (e *env) notify(principal accounts.Principal, event ledger.NotificationEvent, text string, postedAt time.Time) {
 	e.t.Helper()
+	if _, err := e.ledger.SetTracking(e.t.Context(), principal.AccountID, true, nil, postedAt.Add(-24*time.Hour)); err != nil {
+		e.t.Fatal(err)
+	}
 	_, err := e.ledger.IngestNotification(e.t.Context(), principal.AccountID, ledger.WalletNotification{
 		DeviceID:        "galaxy-s24",
 		Package:         "com.google.android.apps.walletnfcrel",
