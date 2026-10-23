@@ -31,7 +31,7 @@ type TransactionFilter struct {
 
 type ListedTransaction struct {
 	Transaction
-	Categories []Allocation
+	Category Allocation
 }
 
 func (s *Service) ListTransactions(ctx context.Context, accountID uuid.UUID, filter TransactionFilter) ([]ListedTransaction, error) {
@@ -65,7 +65,7 @@ func (s *Service) ListTransactions(ctx context.Context, accountID uuid.UUID, fil
 				method = &found
 			}
 			transaction := toTransaction(row, method)
-			listed[i] = ListedTransaction{Transaction: transaction, Categories: EffectiveAllocations(transaction, allocations[row.ID])}
+			listed[i] = ListedTransaction{Transaction: transaction, Category: EffectiveCategory(transaction, allocations[row.ID])}
 		}
 		return nil
 	})
@@ -125,7 +125,7 @@ func (t *tx) paymentMethods() (map[uuid.UUID]PaymentMethod, error) {
 	return methods, nil
 }
 
-func (t *tx) allocationsFor(ids []uuid.UUID, transactions []tenantdb.Transaction) (map[uuid.UUID][]Allocation, error) {
+func (t *tx) allocationsFor(ids []uuid.UUID, transactions []tenantdb.Transaction) (map[uuid.UUID]*Allocation, error) {
 	currency := make(map[uuid.UUID]string, len(transactions))
 	for _, row := range transactions {
 		currency[row.ID] = row.Currency
@@ -134,15 +134,15 @@ func (t *tx) allocationsFor(ids []uuid.UUID, transactions []tenantdb.Transaction
 	if err != nil {
 		return nil, fmt.Errorf("list allocations: %w", err)
 	}
-	allocations := map[uuid.UUID][]Allocation{}
+	allocations := map[uuid.UUID]*Allocation{}
 	for _, row := range rows {
-		allocations[row.TransactionID] = append(allocations[row.TransactionID], Allocation{
+		allocations[row.TransactionID] = &Allocation{
 			Code:   row.Code,
 			Label:  row.Label,
 			Amount: money.Money{Minor: row.AmountMinor, Currency: currency[row.TransactionID]},
 			Status: AllocationStatus(row.Status),
 			Origin: Author(row.Origin),
-		})
+		}
 	}
 	return allocations, nil
 }

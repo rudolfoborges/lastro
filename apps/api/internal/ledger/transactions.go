@@ -24,7 +24,7 @@ const (
 
 type TransactionDetail struct {
 	Transaction
-	Categories     []Allocation
+	Category       Allocation
 	Evidence       []Evidence
 	Fields         []FieldSource
 	History        []Revision
@@ -134,7 +134,7 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 	if err != nil {
 		return TransactionDetail{}, err
 	}
-	allocations, err := t.allocations(id)
+	category, err := t.currentCategory(id)
 	if err != nil {
 		return TransactionDetail{}, err
 	}
@@ -157,7 +157,7 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 	}
 	return TransactionDetail{
 		Transaction:    transaction,
-		Categories:     EffectiveAllocations(transaction, allocations),
+		Category:       EffectiveCategory(transaction, category),
 		Evidence:       evidence,
 		Fields:         fields,
 		History:        history,

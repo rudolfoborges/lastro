@@ -145,7 +145,6 @@ Enquanto existir possível sobreposição não resolvida, mostrar os valores con
 - Usar a identificação do estabelecimento como auxílio, sem presumir o produto comprado em lojas com várias atividades ou marketplaces.
 - Destacar classificações sugeridas e classificações confirmadas.
 - Reunir dúvidas de finalidade em uma lista clara, com descrição, data e valor, para Rudolfo responder.
-- Permitir dividir uma compra entre categorias, desde que os valores fechem exatamente no total.
 - Preservar correções feitas pelo usuário em novas conferências da mesma compra.
 - Aplicar uma orientação a compras futuras somente quando o usuário indicar que ela deve valer como regra.
 
@@ -245,6 +244,7 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 - Resumo diário automático, após definição de horário e ativação.
 - Dashboard privado e imagens dos resumos.
 - Regras de classificação mais abrangentes e novas fontes de despesas, conforme necessidade.
+- Dividir uma compra entre categorias, com valores que fechem exatamente no total, se surgir necessidade. Na primeira entrega cada compra tem uma categoria.
 
 ### Decisões que ainda precisam ser tomadas
 

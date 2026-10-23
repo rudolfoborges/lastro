@@ -32,7 +32,7 @@ func TestAcceptanceCriterion1RecordingByConversation(t *testing.T) {
 		t.Fatalf("first message = %+v", first)
 	}
 	recorded := first.out.Transaction
-	if recorded.Amount.Amount != "327.39" || recorded.Amount.Currency != "BRL" || recorded.Categories[0].Category != "groceries" || recorded.Categories[0].Label != "Mercado" {
+	if recorded.Amount.Amount != "327.39" || recorded.Amount.Currency != "BRL" || recorded.Category.Code != "groceries" || recorded.Category.Label != "Mercado" {
 		t.Errorf("recorded = %+v", recorded)
 	}
 	if *recorded.Date.On != "2026-10-21" || recorded.Date.Source != "inferred" {
@@ -78,8 +78,8 @@ func TestARecordWithoutPaymentMethodIsProvisionalWithThePendingField(t *testing.
 	if got.out.Transaction.Status != "provisional" || !slices.Contains(got.out.Pending, "payment_method") || !slices.Contains(got.out.Pending, "category") {
 		t.Errorf("record = %+v", got.out)
 	}
-	if got.out.Transaction.Categories[0].Category != "unidentified" || got.out.Transaction.Categories[0].Status != "missing" {
-		t.Errorf("categories = %+v", got.out.Transaction.Categories)
+	if got.out.Transaction.Category.Code != "unidentified" || got.out.Transaction.Category.Status != "missing" {
+		t.Errorf("category = %+v", got.out.Transaction.Category)
 	}
 	if len(got.out.Clarifications) != 1 || got.out.Clarifications[0].Kind != "category_unknown" {
 		t.Errorf("clarifications = %+v", got.out.Clarifications)

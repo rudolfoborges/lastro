@@ -30,7 +30,7 @@ Use the codes returned by `list_categories`. The defaults are:
 3. **Gas stations are not always fuel.** Classify a gas station purchase as `fuel` only when it was fuel; snacks there are `convenience_snacks`; when you cannot tell, ask or use `unidentified`.
 4. **Merchants with many activities or marketplaces** (Amazon, Mercado Livre, Americanas, department stores) do not reveal the product. Use what Rudolfo said about the item; without it, `unidentified`.
 5. **Suggested versus confirmed.** Your classification is always `suggested`. Send `confirmed` only when Rudolfo said the category himself or explicitly agreed with your suggestion.
-6. **Splits** are allowed when one purchase covers different things (groceries and snacks in the same receipt). The parts must add up exactly to the total; otherwise Lastro rejects them.
+6. **One category per purchase.** When a receipt mixes things, use the category of what dominates it.
 7. **Corrections stick.** A category Rudolfo confirmed is never replaced by a new suggestion. If a new check disagrees, Lastro opens a clarification instead of changing it.
 8. **Rules for the future** apply only when Rudolfo says a guidance must always hold ("sempre que for na padaria X, é café da manhã"). A one-off correction is not a rule.
 9. **When in doubt, `unidentified`.** A transaction without a category counts as "Não identificado" and shows up in `list_clarifications`.

@@ -99,10 +99,10 @@ const (
 )
 
 type Resolution struct {
-	Action     ResolutionAction
-	Note       string
-	Purpose    *string
-	Categories []Split
+	Action   ResolutionAction
+	Note     string
+	Purpose  *string
+	Category *string
 }
 
 type ResolvedClarification struct {
@@ -190,8 +190,8 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 	if resolution.Action != ResolutionResolve && resolution.Action != ResolutionDismiss {
 		return ResolvedClarification{}, &ValidationError{Field: "action", Message: "must be resolve or dismiss"}
 	}
-	if resolution.Action == ResolutionDismiss && (resolution.Purpose != nil || resolution.Categories != nil) {
-		return ResolvedClarification{}, &ValidationError{Field: "action", Message: "a dismissal does not change the transaction; use resolve to send a purpose or categories"}
+	if resolution.Action == ResolutionDismiss && (resolution.Purpose != nil || resolution.Category != nil) {
+		return ResolvedClarification{}, &ValidationError{Field: "action", Message: "a dismissal does not change the transaction; use resolve to send a purpose or a category"}
 	}
 	row, err := t.q.LockClarification(t.ctx, tenantdb.LockClarificationParams{AccountID: t.accountID, ID: id})
 	if err != nil {
@@ -202,8 +202,8 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 	}
 	kind := ClarificationKind(row.Kind)
 	if resolution.Action == ResolutionResolve {
-		if kind == ClarificationCategoryUnknown && resolution.Categories == nil {
-			return ResolvedClarification{}, &ValidationError{Field: "categories", Message: "are needed to resolve a missing category; dismiss it if Rudolfo does not know"}
+		if kind == ClarificationCategoryUnknown && resolution.Category == nil {
+			return ResolvedClarification{}, &ValidationError{Field: "category", Message: "is needed to resolve a missing category; dismiss it if Rudolfo does not know"}
 		}
 		if kind == ClarificationPurposeUnknown && resolution.Purpose == nil {
 			return ResolvedClarification{}, &ValidationError{Field: "purpose", Message: "is needed to resolve a missing purpose; dismiss it if Rudolfo does not know"}
@@ -226,12 +226,8 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 		if err := t.recordRevision(*closed.TransactionID, fieldClarification, before, after, note, actor); err != nil {
 			return ResolvedClarification{}, err
 		}
-		if resolution.Purpose != nil || resolution.Categories != nil {
-			patch := Patch{Categories: resolution.Categories}
-			if resolution.Purpose != nil {
-				patch.Purpose = Value(*resolution.Purpose)
-			}
-			correction, err := t.correct(*closed.TransactionID, patch, note, actor)
+		if resolution.Category != nil || resolution.Purpose != nil {
+			correction, err := t.applyAnswer(*closed.TransactionID, resolution, note, actor)
 			if err != nil {
 				return ResolvedClarification{}, err
 			}
@@ -242,6 +238,26 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 	return result, err
 }
 
+func (t *tx) applyAnswer(transactionID uuid.UUID, resolution Resolution, note string, actor Actor) (Correction, error) {
+	if resolution.Category != nil {
+		transaction, err := t.lockOpenTransaction(transactionID)
+		if err != nil {
+			return Correction{}, err
+		}
+		if _, err := t.categorize(transaction, *resolution.Category, AllocationConfirmed, note, actor); err != nil {
+			return Correction{}, err
+		}
+		if err := t.refreshClarifications(transactionID); err != nil {
+			return Correction{}, err
+		}
+	}
+	patch := Patch{}
+	if resolution.Purpose != nil {
+		patch.Purpose = Value(*resolution.Purpose)
+	}
+	return t.correct(transactionID, patch, note, actor)
+}
+
 func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 	transaction, err := t.transaction(transactionID)
 	if err != nil {
@@ -250,11 +266,11 @@ func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 	if transaction.Status == StatusVoided || transaction.Status == StatusMerged {
 		return t.closeTransactionClarifications(transactionID, nil, ClarificationDismissed, "Lançamento anulado ou fundido.")
 	}
-	allocations, err := t.allocations(transactionID)
+	current, err := t.currentCategory(transactionID)
 	if err != nil {
 		return err
 	}
-	if len(allocations) == 0 {
+	if current == nil {
 		err = t.openClarification(newClarification{
 			kind:          ClarificationCategoryUnknown,
 			transactionID: &transactionID,

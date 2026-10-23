@@ -31,30 +31,29 @@ type InstallmentsOutput struct {
 	Amount *MoneyOutput `json:"amount,omitempty"`
 }
 
-type AllocationOutput struct {
-	Category string      `json:"category"`
-	Label    string      `json:"label"`
-	Amount   MoneyOutput `json:"amount"`
-	Status   string      `json:"status" jsonschema:"suggested, confirmed, or missing when no category was given"`
-	Origin   string      `json:"origin,omitempty"`
+type CategoryAllocationOutput struct {
+	Code   string `json:"code"`
+	Label  string `json:"label"`
+	Status string `json:"status" jsonschema:"suggested, confirmed, or missing when no category was given"`
+	Origin string `json:"origin,omitempty"`
 }
 
 type TransactionOutput struct {
-	ID                  string               `json:"id"`
-	Description         string               `json:"description"`
-	OriginalDescription string               `json:"original_description"`
-	Merchant            *string              `json:"merchant,omitempty"`
-	Payee               *string              `json:"payee,omitempty"`
-	Amount              MoneyOutput          `json:"amount"`
-	OriginalAmount      *MoneyOutput         `json:"original_amount,omitempty"`
-	Date                DateOutput           `json:"date"`
-	PaymentMethod       *PaymentMethodOutput `json:"payment_method,omitempty"`
-	Nature              string               `json:"nature"`
-	Status              string               `json:"status"`
-	Purpose             *string              `json:"purpose,omitempty"`
-	Installments        *InstallmentsOutput  `json:"installments,omitempty"`
-	Categories          []AllocationOutput   `json:"categories,omitempty"`
-	CreatedAt           string               `json:"created_at"`
+	ID                  string                    `json:"id"`
+	Description         string                    `json:"description"`
+	OriginalDescription string                    `json:"original_description"`
+	Merchant            *string                   `json:"merchant,omitempty"`
+	Payee               *string                   `json:"payee,omitempty"`
+	Amount              MoneyOutput               `json:"amount"`
+	OriginalAmount      *MoneyOutput              `json:"original_amount,omitempty"`
+	Date                DateOutput                `json:"date"`
+	PaymentMethod       *PaymentMethodOutput      `json:"payment_method,omitempty"`
+	Nature              string                    `json:"nature"`
+	Status              string                    `json:"status"`
+	Purpose             *string                   `json:"purpose,omitempty"`
+	Installments        *InstallmentsOutput       `json:"installments,omitempty"`
+	Category            *CategoryAllocationOutput `json:"category,omitempty"`
+	CreatedAt           string                    `json:"created_at"`
 }
 
 type ClarificationOutput struct {
@@ -85,7 +84,7 @@ func dateOutput(o calendar.Occurrence) DateOutput {
 	return out
 }
 
-func transactionOutput(tr ledger.Transaction, allocations []ledger.Allocation) TransactionOutput {
+func transactionOutput(tr ledger.Transaction, category *ledger.Allocation) TransactionOutput {
 	out := TransactionOutput{
 		ID:                  tr.ID.String(),
 		Description:         tr.Description,
@@ -113,8 +112,8 @@ func transactionOutput(tr ledger.Transaction, allocations []ledger.Allocation) T
 			out.Installments.Amount = &amount
 		}
 	}
-	for _, a := range allocations {
-		out.Categories = append(out.Categories, AllocationOutput{Category: a.Code, Label: a.Label, Amount: moneyOutput(a.Amount), Status: string(a.Status), Origin: string(a.Origin)})
+	if category != nil {
+		out.Category = &CategoryAllocationOutput{Code: category.Code, Label: category.Label, Status: string(category.Status), Origin: string(category.Origin)}
 	}
 	return out
 }

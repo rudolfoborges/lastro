@@ -35,7 +35,7 @@ Never tell Rudolfo that something was recorded unless the answer says `recorded`
 ## Later corrections
 
 - Change description, merchant, date, amount, payment method or purpose with `update_transaction`, always with a short `reason` in Portuguese that says what Rudolfo asked.
-- Set or confirm categories with `set_category`; a split must add up exactly to the amount.
+- Set or confirm the category with `set_category`; each transaction has a single category.
 - Void a record made by mistake with `void_transaction`; it is kept as voided, never deleted.
 - Pending questions are in `list_clarifications`; answer them with `resolve_clarification`.
 

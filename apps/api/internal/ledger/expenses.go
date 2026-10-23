@@ -66,7 +66,7 @@ type ExpenseReport struct {
 type ExpenseOutcome struct {
 	Result         ExpenseResult
 	Transaction    *Transaction
-	Categories     []Allocation
+	Category       Allocation
 	Inferred       []string
 	Pending        []string
 	Clarifications []Clarification
@@ -136,7 +136,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 			if err != nil {
 				return recordedExpense{}, err
 			}
-			allocations, err := t.allocations(existing.ID)
+			current, err := t.currentCategory(existing.ID)
 			if err != nil {
 				return recordedExpense{}, err
 			}
@@ -144,7 +144,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 			return recordedExpense{}, &pendingExpense{outcome: ExpenseOutcome{
 				Result:      ExpensePossibleDuplicate,
 				Transaction: &existing,
-				Categories:  EffectiveAllocations(existing, allocations),
+				Category:    EffectiveCategory(existing, current),
 				RepeatedAt:  &repeatedAt,
 				Location:    loc,
 			}}
@@ -229,7 +229,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		if report.CategoryStatus == AllocationConfirmed {
 			categorizer.Author, reason = AuthorUser, "Categoria informada por Rudolfo."
 		}
-		if _, err := t.categorize(created, []Split{{Code: *report.Category}}, report.CategoryStatus, reason, categorizer); err != nil {
+		if _, err := t.categorize(created, *report.Category, report.CategoryStatus, reason, categorizer); err != nil {
 			return recordedExpense{}, err
 		}
 	}
@@ -244,7 +244,7 @@ func (t *tx) expenseOutcome(transactionID uuid.UUID, report ExpenseReport, loc *
 	if err != nil {
 		return ExpenseOutcome{}, err
 	}
-	allocations, err := t.allocations(transactionID)
+	current, err := t.currentCategory(transactionID)
 	if err != nil {
 		return ExpenseOutcome{}, err
 	}
@@ -255,7 +255,7 @@ func (t *tx) expenseOutcome(transactionID uuid.UUID, report ExpenseReport, loc *
 	outcome := ExpenseOutcome{
 		Result:      ExpenseRecorded,
 		Transaction: &transaction,
-		Categories:  EffectiveAllocations(transaction, allocations),
+		Category:    EffectiveCategory(transaction, current),
 		Location:    loc,
 	}
 	for _, row := range rows {
@@ -274,7 +274,7 @@ func (t *tx) expenseOutcome(transactionID uuid.UUID, report ExpenseReport, loc *
 	if transaction.PaymentMethod == nil {
 		outcome.Pending = append(outcome.Pending, "payment_method")
 	}
-	if len(allocations) == 0 {
+	if current == nil {
 		outcome.Pending = append(outcome.Pending, "category")
 	}
 	if !transaction.Occurred.Known() {

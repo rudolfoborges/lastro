@@ -67,8 +67,8 @@ func TestRecordingAnExpenseFromTheConversation(t *testing.T) {
 	if tr.Amount != brl(32739) || tr.Description != "Compra no mercado" || tr.OriginalDescription != "Gastei R$ 327,39 no mercado agora" {
 		t.Errorf("transaction = %+v", tr)
 	}
-	if len(outcome.Categories) != 1 || outcome.Categories[0].Code != "groceries" || outcome.Categories[0].Label != "Mercado" || outcome.Categories[0].Status != ledger.AllocationSuggested {
-		t.Errorf("categories = %+v", outcome.Categories)
+	if outcome.Category.Code != "groceries" || outcome.Category.Label != "Mercado" || outcome.Category.Status != ledger.AllocationSuggested {
+		t.Errorf("category = %+v", outcome.Category)
 	}
 	if tr.Occurred.On.String() != "2026-10-21" || tr.Occurred.Source != calendar.SourceInferred || tr.Occurred.Precision != calendar.PrecisionExact {
 		t.Errorf("occurred = %+v, want 21/10 inferred from 23:50 local", tr.Occurred)
@@ -219,8 +219,8 @@ func TestStatedDatesAndConfirmedCategoriesAreKeptAsGiven(t *testing.T) {
 	if outcome.Transaction.Occurred.Source != calendar.SourceStated || outcome.Transaction.Occurred.On.String() != "2026-10-18" || len(outcome.Inferred) != 0 {
 		t.Errorf("occurred = %+v, inferred = %v", outcome.Transaction.Occurred, outcome.Inferred)
 	}
-	if outcome.Categories[0].Status != ledger.AllocationConfirmed || outcome.Categories[0].Origin != ledger.AuthorUser {
-		t.Errorf("categories = %+v", outcome.Categories)
+	if outcome.Category.Status != ledger.AllocationConfirmed || outcome.Category.Origin != ledger.AuthorUser {
+		t.Errorf("category = %+v", outcome.Category)
 	}
 	if outcome.Transaction.Installments == nil || outcome.Transaction.Installments.Count != 3 || outcome.Transaction.Installments.Amount != nil {
 		t.Errorf("installments = %+v", outcome.Transaction.Installments)
@@ -279,7 +279,7 @@ func TestRecordExpenseRejectsInconsistentReports(t *testing.T) {
 			r.OccurredOn = &calendar.Date{Year: 2026, Month: 10, Day: 1}
 		}, "date_reference"},
 		"future message":    {func(r *ledger.ExpenseReport) { r.MessageAt = ptr(lateNight.Add(3 * time.Hour)) }, "message_at"},
-		"unknown category":  {func(r *ledger.ExpenseReport) { r.Category = ptr("pets") }, "categories"},
+		"unknown category":  {func(r *ledger.ExpenseReport) { r.Category = ptr("pets") }, "category"},
 		"rule confirmation": {func(r *ledger.ExpenseReport) { r.CategoryStatus = "maybe" }, "category_status"},
 		"bad input mode":    {func(r *ledger.ExpenseReport) { r.InputMode = "video" }, "input_mode"},
 	}

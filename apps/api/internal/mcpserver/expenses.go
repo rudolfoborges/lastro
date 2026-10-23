@@ -162,7 +162,7 @@ func recordExpenseOutput(outcome ledger.ExpenseOutcome) RecordExpenseOutput {
 		Question: outcome.Question,
 	}
 	if outcome.Transaction != nil {
-		transaction := transactionOutput(*outcome.Transaction, outcome.Categories)
+		transaction := transactionOutput(*outcome.Transaction, &outcome.Category)
 		out.Transaction = &transaction
 	}
 	for _, clarification := range outcome.Clarifications {
@@ -208,15 +208,11 @@ func recordedSummary(outcome ledger.ExpenseOutcome) string {
 func expenseLine(outcome ledger.ExpenseOutcome) string {
 	tr := outcome.Transaction
 	line := fmt.Sprintf("%s em \"%s\"", tr.Amount.Format(), tr.Description)
-	for _, allocation := range outcome.Categories {
-		if allocation.Status == ledger.AllocationMissing {
-			continue
-		}
-		line += ", categoria " + allocation.Label
-		if allocation.Status == ledger.AllocationSuggested {
+	if category := outcome.Category; category.Status != ledger.AllocationMissing && category.Code != "" {
+		line += ", categoria " + category.Label
+		if category.Status == ledger.AllocationSuggested {
 			line += " (sugerida)"
 		}
-		break
 	}
 	if tr.Occurred.On == nil {
 		return line + ", sem data"

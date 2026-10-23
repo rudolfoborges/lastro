@@ -23,12 +23,12 @@ type ListClarificationsOutput struct {
 }
 
 type ResolveClarificationInput struct {
-	ClarificationID string         `json:"clarification_id" jsonschema:"ID from list_clarifications"`
-	RequestID       string         `json:"request_id" jsonschema:"generated once for this answer and reused on every retry"`
-	Action          string         `json:"action" jsonschema:"resolve applies Rudolfo's answer; dismiss stops asking without changing the transaction"`
-	Note            string         `json:"note" jsonschema:"Rudolfo's answer in Portuguese, kept in the history"`
-	Purpose         string         `json:"purpose,omitempty" jsonschema:"the purpose Rudolfo gave, for purpose_unknown"`
-	Categories      []CategoryPart `json:"categories,omitempty" jsonschema:"the category or exact split Rudolfo gave, for category_unknown; it becomes confirmed"`
+	ClarificationID string `json:"clarification_id" jsonschema:"ID from list_clarifications"`
+	RequestID       string `json:"request_id" jsonschema:"generated once for this answer and reused on every retry"`
+	Action          string `json:"action" jsonschema:"resolve applies Rudolfo's answer; dismiss stops asking without changing the transaction"`
+	Note            string `json:"note" jsonschema:"Rudolfo's answer in Portuguese, kept in the history"`
+	Purpose         string `json:"purpose,omitempty" jsonschema:"the purpose Rudolfo gave, for purpose_unknown"`
+	Category        string `json:"category,omitempty" jsonschema:"the category code Rudolfo gave, for category_unknown; it becomes confirmed"`
 }
 
 type ResolveClarificationOutput struct {
@@ -93,10 +93,10 @@ func (s *Server) registerClarifications() {
 			return ResolveClarificationOutput{}, err
 		}
 		resolved, err := s.deps.Ledger.ResolveClarification(ctx, c.principal.AccountID, id, ledger.Resolution{
-			Action:     ledger.ResolutionAction(in.Action),
-			Note:       in.Note,
-			Purpose:    optionalString(in.Purpose),
-			Categories: splitFrom(in.Categories),
+			Action:   ledger.ResolutionAction(in.Action),
+			Note:     in.Note,
+			Purpose:  optionalString(in.Purpose),
+			Category: optionalString(in.Category),
 		}, c.actor(ledger.AuthorUser, in.RequestID))
 		if err != nil {
 			return ResolveClarificationOutput{}, err
@@ -111,7 +111,7 @@ func (s *Server) registerClarifications() {
 			out.Summary = "Dúvida dispensada; não será perguntada de novo."
 		}
 		if resolved.Correction != nil {
-			transaction := transactionOutput(resolved.Correction.Transaction, resolved.Correction.Categories)
+			transaction := transactionOutput(resolved.Correction.Transaction, &resolved.Correction.Category)
 			out.Transaction = &transaction
 		}
 		return out, nil

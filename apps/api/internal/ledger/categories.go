@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -19,9 +18,8 @@ import (
 )
 
 const (
-	fieldCategory     = "category"
-	maxCategoryLabel  = 100
-	categoryUnchanged = "Categoria mantida com o novo valor."
+	fieldCategory    = "category"
+	maxCategoryLabel = 100
 )
 
 var categoryCode = regexp.MustCompile(`^[a-z][a-z0-9_]{0,49}$`)
@@ -41,12 +39,6 @@ type Category struct {
 	Archived bool
 }
 
-type Split struct {
-	Code       string
-	Amount     *money.Money
-	AmountText string
-}
-
 type Allocation struct {
 	Code   string
 	Label  string
@@ -56,9 +48,9 @@ type Allocation struct {
 }
 
 type Categorization struct {
-	Allocations []Allocation
-	Changed     bool
-	Conflict    *FieldConflict
+	Category Allocation
+	Changed  bool
+	Conflict *FieldConflict
 }
 
 func (s *Service) Categories(ctx context.Context, accountID uuid.UUID) ([]Category, error) {
@@ -121,16 +113,16 @@ func (s *Service) ArchiveCategory(ctx context.Context, accountID uuid.UUID, code
 	return category, err
 }
 
-func (s *Service) Categorize(ctx context.Context, accountID, transactionID uuid.UUID, split []Split, status AllocationStatus, reason string, actor Actor) (Categorization, error) {
+func (s *Service) Categorize(ctx context.Context, accountID, transactionID uuid.UUID, code string, status AllocationStatus, reason string, actor Actor) (Categorization, error) {
 	var result Categorization
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
-		result, err = once(t, "set_category", actor, []any{transactionID, split, status, reason}, func() (Categorization, error) {
+		result, err = once(t, "set_category", actor, []any{transactionID, code, status, reason}, func() (Categorization, error) {
 			transaction, err := t.lockOpenTransaction(transactionID)
 			if err != nil {
 				return Categorization{}, err
 			}
-			result, err := t.categorize(transaction, split, status, reason, actor)
+			result, err := t.categorize(transaction, code, status, reason, actor)
 			if err != nil {
 				return Categorization{}, err
 			}
@@ -141,28 +133,21 @@ func (s *Service) Categorize(ctx context.Context, accountID, transactionID uuid.
 	return result, err
 }
 
-func (s *Service) Allocations(ctx context.Context, accountID, transactionID uuid.UUID) ([]Allocation, error) {
-	var allocations []Allocation
+func (s *Service) CategoryOf(ctx context.Context, accountID, transactionID uuid.UUID) (Allocation, error) {
+	var allocation Allocation
 	err := s.inTx(ctx, accountID, func(t *tx) error {
-		transaction, err := t.transaction(transactionID)
-		if err != nil {
-			return err
-		}
-		current, err := t.allocations(transactionID)
-		if err != nil {
-			return err
-		}
-		allocations = EffectiveAllocations(transaction, current)
-		return nil
+		var err error
+		allocation, err = t.effectiveCategory(transactionID)
+		return err
 	})
-	return allocations, err
+	return allocation, err
 }
 
-// EffectiveAllocations is what views count: a transaction without any
-// allocation counts in full as "Não identificado".
-func EffectiveAllocations(transaction Transaction, current []Allocation) []Allocation {
-	if len(current) > 0 {
-		return current
+// EffectiveCategory is what views count: a transaction without a category
+// counts in full as "Não identificado".
+func EffectiveCategory(transaction Transaction, current *Allocation) Allocation {
+	if current != nil {
+		return *current
 	}
 	label := taxonomy.Unidentified
 	for _, category := range taxonomy.Defaults {
@@ -170,10 +155,10 @@ func EffectiveAllocations(transaction Transaction, current []Allocation) []Alloc
 			label = category.Label
 		}
 	}
-	return []Allocation{{Code: taxonomy.Unidentified, Label: label, Amount: transaction.Amount, Status: AllocationMissing}}
+	return Allocation{Code: taxonomy.Unidentified, Label: label, Amount: transaction.Amount, Status: AllocationMissing}
 }
 
-func (t *tx) categorize(transaction Transaction, split []Split, status AllocationStatus, reason string, actor Actor) (Categorization, error) {
+func (t *tx) categorize(transaction Transaction, code string, status AllocationStatus, reason string, actor Actor) (Categorization, error) {
 	reason, err := requiredText("reason", reason, maxReason)
 	if err != nil {
 		return Categorization{}, err
@@ -182,31 +167,32 @@ func (t *tx) categorize(transaction Transaction, split []Split, status Allocatio
 	if err != nil {
 		return Categorization{}, err
 	}
-	planned, err := t.planAllocations(transaction, split)
+	category, err := t.category(strings.TrimSpace(code))
 	if err != nil {
 		return Categorization{}, err
 	}
-	current, err := t.allocations(transaction.ID)
+	if category.Archived {
+		return Categorization{}, &ValidationError{Field: "category", Message: fmt.Sprintf("category %q is archived", category.Code)}
+	}
+	planned := Allocation{Code: category.Code, Label: category.Label, Amount: transaction.Amount, Status: status, Origin: origin}
+	current, err := t.currentCategory(transaction.ID)
 	if err != nil {
 		return Categorization{}, err
 	}
-	for i := range planned {
-		planned[i].Status, planned[i].Origin = status, origin
+	if current != nil && current.Code == planned.Code && current.Status == planned.Status {
+		return Categorization{Category: *current}, nil
 	}
-	if sameAllocations(current, planned) {
-		return Categorization{Allocations: current}, nil
-	}
-	if actor.Author != AuthorUser && confirmedAllocations(current) {
-		conflict := FieldConflict{Field: fieldCategory, Current: allocationsJSON(current), Proposed: allocationsJSON(planned)}
+	if actor.Author != AuthorUser && current != nil && current.Status == AllocationConfirmed {
+		conflict := FieldConflict{Field: fieldCategory, Current: allocationJSON(current), Proposed: allocationJSON(&planned)}
 		if err := t.openConflicts(transaction, []FieldConflict{conflict}, actor); err != nil {
 			return Categorization{}, err
 		}
-		return Categorization{Allocations: current, Conflict: &conflict}, nil
+		return Categorization{Category: *current, Conflict: &conflict}, nil
 	}
-	if err := t.replaceAllocations(transaction.ID, planned); err != nil {
+	if err := t.replaceCategory(transaction.ID, category, planned); err != nil {
 		return Categorization{}, err
 	}
-	if err := t.recordRevision(transaction.ID, fieldCategory, allocationsJSON(current), allocationsJSON(planned), reason, actor); err != nil {
+	if err := t.recordRevision(transaction.ID, fieldCategory, allocationJSON(current), allocationJSON(&planned), reason, actor); err != nil {
 		return Categorization{}, err
 	}
 	if actor.Author == AuthorUser {
@@ -214,128 +200,74 @@ func (t *tx) categorize(transaction Transaction, split []Split, status Allocatio
 			return Categorization{}, err
 		}
 	}
-	return Categorization{Allocations: planned, Changed: true}, nil
+	return Categorization{Category: planned, Changed: true}, nil
 }
 
-func (t *tx) followAmount(transaction Transaction, split []Split, reason string, actor Actor) error {
-	current, err := t.allocations(transaction.ID)
-	if err != nil || len(current) == 0 {
+func (t *tx) followAmount(transaction Transaction) error {
+	current, err := t.currentCategory(transaction.ID)
+	if err != nil || current == nil {
 		return err
 	}
-	if split != nil {
-		result, err := t.categorize(transaction, split, statusChosenBy(actor), reason, actor)
-		if err != nil {
-			return err
-		}
-		if result.Conflict != nil {
-			return &ValidationError{Field: "categories", Message: "are confirmed by Rudolfo and can only change with his confirmation"}
-		}
-		return nil
+	category, err := t.category(current.Code)
+	if err != nil {
+		return err
 	}
-	if len(current) > 1 {
-		return &ValidationError{Field: "categories", Message: "the transaction is split between categories: send the new split together with the new amount"}
-	}
-	followed := current[0]
+	followed := *current
 	followed.Amount = transaction.Amount
-	if err := t.replaceAllocations(transaction.ID, []Allocation{followed}); err != nil {
-		return err
-	}
-	return t.recordRevision(transaction.ID, fieldCategory, allocationsJSON(current), allocationsJSON([]Allocation{followed}), categoryUnchanged, Actor{Author: AuthorSystem})
+	return t.replaceCategory(transaction.ID, category, followed)
 }
 
-func (t *tx) planAllocations(transaction Transaction, split []Split) ([]Allocation, error) {
-	if len(split) == 0 {
-		return nil, &ValidationError{Field: "categories", Message: "must name at least one category"}
-	}
-	split = slices.Clone(split)
-	for i, part := range split {
-		if part.Amount != nil || part.AmountText == "" {
-			continue
-		}
-		amount, err := money.Parse(part.AmountText, transaction.Amount.Currency)
-		if err != nil {
-			return nil, &ValidationError{Field: "categories", Message: err.Error()}
-		}
-		split[i].Amount = &amount
-	}
-	if len(split) == 1 && split[0].Amount == nil {
-		split = []Split{{Code: split[0].Code, Amount: &transaction.Amount}}
-	}
-	planned := make([]Allocation, 0, len(split))
-	total := money.Money{Currency: transaction.Amount.Currency}
-	for _, part := range split {
-		if part.Amount == nil {
-			return nil, &ValidationError{Field: "categories", Message: "every part of a split needs an amount"}
-		}
-		if part.Amount.Currency != transaction.Amount.Currency || part.Amount.Minor <= 0 {
-			return nil, &ValidationError{Field: "categories", Message: fmt.Sprintf("amounts must be positive and in %s", transaction.Amount.Currency)}
-		}
-		if slices.ContainsFunc(planned, func(a Allocation) bool { return a.Code == part.Code }) {
-			return nil, &ValidationError{Field: "categories", Message: fmt.Sprintf("category %q appears more than once", part.Code)}
-		}
-		category, err := t.category(part.Code)
-		if err != nil {
-			return nil, err
-		}
-		if category.Archived {
-			return nil, &ValidationError{Field: "categories", Message: fmt.Sprintf("category %q is archived", part.Code)}
-		}
-		planned = append(planned, Allocation{Code: category.Code, Label: category.Label, Amount: *part.Amount})
-		if total, err = total.Add(*part.Amount); err != nil {
-			return nil, &ValidationError{Field: "categories", Message: err.Error()}
-		}
-	}
-	if total != transaction.Amount {
-		return nil, &ValidationError{Field: "categories", Message: fmt.Sprintf("the split adds up to %s but the transaction is %s; the parts must match it to the cent", total.Format(), transaction.Amount.Format())}
-	}
-	return planned, nil
-}
-
-func (t *tx) replaceAllocations(transactionID uuid.UUID, allocations []Allocation) error {
+func (t *tx) replaceCategory(transactionID uuid.UUID, category Category, allocation Allocation) error {
 	if err := t.q.SupersedeAllocations(t.ctx, tenantdb.SupersedeAllocationsParams{AccountID: t.accountID, TransactionID: transactionID}); err != nil {
-		return fmt.Errorf("supersede allocations: %w", err)
+		return fmt.Errorf("supersede category: %w", err)
 	}
-	for _, allocation := range allocations {
-		category, err := t.category(allocation.Code)
-		if err != nil {
-			return err
-		}
-		err = t.q.InsertAllocation(t.ctx, tenantdb.InsertAllocationParams{
-			ID:            store.NewID(),
-			AccountID:     t.accountID,
-			TransactionID: transactionID,
-			CategoryID:    category.ID,
-			AmountMinor:   allocation.Amount.Minor,
-			Status:        string(allocation.Status),
-			Origin:        string(allocation.Origin),
-		})
-		if err != nil {
-			return fmt.Errorf("insert allocation: %w", err)
-		}
+	err := t.q.InsertAllocation(t.ctx, tenantdb.InsertAllocationParams{
+		ID:            store.NewID(),
+		AccountID:     t.accountID,
+		TransactionID: transactionID,
+		CategoryID:    category.ID,
+		AmountMinor:   allocation.Amount.Minor,
+		Status:        string(allocation.Status),
+		Origin:        string(allocation.Origin),
+	})
+	if err != nil {
+		return fmt.Errorf("insert category: %w", err)
 	}
 	return nil
 }
 
-func (t *tx) allocations(transactionID uuid.UUID) ([]Allocation, error) {
+func (t *tx) currentCategory(transactionID uuid.UUID) (*Allocation, error) {
 	transaction, err := t.q.GetTransaction(t.ctx, tenantdb.GetTransactionParams{AccountID: t.accountID, ID: transactionID})
 	if err != nil {
 		return nil, fmt.Errorf("transaction %s: %w", transactionID, notFound(err))
 	}
 	rows, err := t.q.CurrentAllocations(t.ctx, tenantdb.CurrentAllocationsParams{AccountID: t.accountID, TransactionID: transactionID})
 	if err != nil {
-		return nil, fmt.Errorf("list allocations: %w", err)
+		return nil, fmt.Errorf("get category: %w", err)
 	}
-	allocations := make([]Allocation, len(rows))
-	for i, row := range rows {
-		allocations[i] = Allocation{
-			Code:   row.Code,
-			Label:  row.Label,
-			Amount: money.Money{Minor: row.AmountMinor, Currency: transaction.Currency},
-			Status: AllocationStatus(row.Status),
-			Origin: Author(row.Origin),
-		}
+	if len(rows) == 0 {
+		return nil, nil
 	}
-	return allocations, nil
+	row := rows[0]
+	return &Allocation{
+		Code:   row.Code,
+		Label:  row.Label,
+		Amount: money.Money{Minor: row.AmountMinor, Currency: transaction.Currency},
+		Status: AllocationStatus(row.Status),
+		Origin: Author(row.Origin),
+	}, nil
+}
+
+func (t *tx) effectiveCategory(transactionID uuid.UUID) (Allocation, error) {
+	transaction, err := t.transaction(transactionID)
+	if err != nil {
+		return Allocation{}, err
+	}
+	current, err := t.currentCategory(transactionID)
+	if err != nil {
+		return Allocation{}, err
+	}
+	return EffectiveCategory(transaction, current), nil
 }
 
 func (t *tx) category(code string) (Category, error) {
@@ -360,7 +292,7 @@ func (t *tx) unknownCategory(code string) error {
 			codes = append(codes, row.Code)
 		}
 	}
-	return &ValidationError{Field: "categories", Message: fmt.Sprintf("unknown category %q; use one of %s", code, strings.Join(codes, ", "))}
+	return &ValidationError{Field: "category", Message: fmt.Sprintf("unknown category %q; use one of %s", code, strings.Join(codes, ", "))}
 }
 
 func allocationOrigin(status AllocationStatus, actor Actor) (Author, error) {
@@ -380,28 +312,11 @@ func allocationOrigin(status AllocationStatus, actor Actor) (Author, error) {
 	}
 }
 
-func confirmedAllocations(allocations []Allocation) bool {
-	return slices.ContainsFunc(allocations, func(a Allocation) bool { return a.Status == AllocationConfirmed })
-}
-
-func sameAllocations(a, b []Allocation) bool {
-	return slices.EqualFunc(sortedAllocations(a), sortedAllocations(b), func(x, y Allocation) bool {
-		return x.Code == y.Code && x.Amount == y.Amount && x.Status == y.Status
-	})
-}
-
-func sortedAllocations(allocations []Allocation) []Allocation {
-	sorted := slices.Clone(allocations)
-	slices.SortFunc(sorted, func(x, y Allocation) int { return strings.Compare(x.Code, y.Code) })
-	return sorted
-}
-
-func allocationsJSON(allocations []Allocation) []byte {
-	value := make([]map[string]any, len(allocations))
-	for i, a := range sortedAllocations(allocations) {
-		value[i] = map[string]any{"category": a.Code, "amount": amountJSON(a.Amount), "status": a.Status}
+func allocationJSON(allocation *Allocation) []byte {
+	if allocation == nil {
+		return jsonValue(nil)
 	}
-	return jsonValue(value)
+	return jsonValue(map[string]any{"category": allocation.Code, "status": allocation.Status})
 }
 
 func toCategory(row tenantdb.Category) Category {
