@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
 )
 
@@ -23,9 +25,17 @@ func walletNotification(sentAt time.Time) map[string]any {
 	}
 }
 
+func (a *testAPI) track(accountID string, active bool) {
+	a.t.Helper()
+	if _, err := a.ledger.SetTracking(a.t.Context(), uuid.MustParse(accountID), active, nil, time.Now()); err != nil {
+		a.t.Fatal(err)
+	}
+}
+
 func TestWalletNotificationsAreStoredOnceAndAcknowledged(t *testing.T) {
 	api := newTestAPI(t, config.RateLimits{})
-	_, admin := api.signUp("Rudolfo")
+	accountID, admin := api.signUp("Rudolfo")
+	api.track(accountID, true)
 	_, android := api.createKey(admin, "android", "wallet:ingest")
 	notification := walletNotification(time.Now())
 
@@ -93,7 +103,8 @@ func TestInvalidWalletNotificationsExplainTheField(t *testing.T) {
 
 func TestRemovingAWalletNotificationIsAcknowledged(t *testing.T) {
 	api := newTestAPI(t, config.RateLimits{})
-	_, admin := api.signUp("Rudolfo")
+	accountID, admin := api.signUp("Rudolfo")
+	api.track(accountID, true)
 	_, android := api.createKey(admin, "android", "wallet:ingest")
 	posted := api.do(http.MethodPost, "/v1/wallet/notifications", android, walletNotification(time.Now()))
 	removal := map[string]any{
@@ -109,5 +120,52 @@ func TestRemovingAWalletNotificationIsAcknowledged(t *testing.T) {
 	assertStatus(t, res, http.StatusOK, "")
 	if field(res.body, "result") != "removed" || field(res.body, "notification_id") != field(posted.body, "notification_id") {
 		t.Errorf("removal = %s, want removed for %s", res.raw, posted.raw)
+	}
+}
+
+func heartbeat(sentAt time.Time) map[string]any {
+	return map[string]any{
+		"device_id":            "galaxy-s24",
+		"client_version":       "0.1.0",
+		"notification_access":  true,
+		"battery_unrestricted": true,
+		"queue_size":           0,
+		"sent_at":              sentAt.Format(time.RFC3339Nano),
+	}
+}
+
+func TestHeartbeatsReportTheTrackingState(t *testing.T) {
+	api := newTestAPI(t, config.RateLimits{})
+	accountID, admin := api.signUp("Rudolfo")
+	_, android := api.createKey(admin, "android", "wallet:ingest")
+
+	before := api.do(http.MethodPost, "/v1/wallet/heartbeat", android, heartbeat(time.Now()))
+	api.track(accountID, true)
+	active := api.do(http.MethodPost, "/v1/wallet/heartbeat", android, heartbeat(time.Now()))
+	api.track(accountID, false)
+	paused := api.do(http.MethodPost, "/v1/wallet/heartbeat", android, heartbeat(time.Now()))
+
+	for res, want := range map[*response]string{&before: "never_enabled", &active: "active", &paused: "paused"} {
+		assertStatus(t, *res, http.StatusOK, "")
+		if field(res.body, "tracking") != want || field(res.body, "server_time") == "" {
+			t.Errorf("heartbeat = %s, want tracking %s", res.raw, want)
+		}
+	}
+	missing := heartbeat(time.Now())
+	delete(missing, "notification_access")
+	assertStatus(t, api.do(http.MethodPost, "/v1/wallet/heartbeat", android, missing), http.StatusBadRequest, "invalid_request")
+	assertStatus(t, api.do(http.MethodPost, "/v1/wallet/heartbeat", android, heartbeat(time.Now().Add(-time.Hour))), http.StatusBadRequest, "stale_request")
+}
+
+func TestWalletNotificationsAreDroppedWhileTrackingIsPaused(t *testing.T) {
+	api := newTestAPI(t, config.RateLimits{})
+	_, admin := api.signUp("Rudolfo")
+	_, android := api.createKey(admin, "android", "wallet:ingest")
+
+	res := api.do(http.MethodPost, "/v1/wallet/notifications", android, walletNotification(time.Now()))
+
+	assertStatus(t, res, http.StatusOK, "")
+	if field(res.body, "result") != "tracking_paused" || field(res.body, "notification_id") != "" {
+		t.Errorf("notification while paused = %s", res.raw)
 	}
 }

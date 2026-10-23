@@ -41,4 +41,4 @@ Never tell Rudolfo that something was recorded unless the answer says `recorded`
 
 ## Totals
 
-Never add up amounts yourself. Totals, summaries and views come from Lastro's query tools.
+Never add up amounts yourself. Totals, summaries and views come from Lastro's query tools. Before talking about the spending of a period, call `get_coverage_status` for it and relay its `limitations`: a period without notifications is not a period without spending.
