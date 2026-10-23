@@ -51,6 +51,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | regra de classificação | `classification_rule` |
 | histórico de alterações | `revision` |
 | acompanhamento automático / cobertura / lacuna | `tracking` / `coverage` / `gap` |
+| período de acompanhamento / sinal de vida do celular / entrega atrasada | `tracking_period` / `heartbeat` / `late_delivery` |
 | precisão da data / origem da data | `date_precision` (`exact`, `day`, `month`, `unknown`) / `date_source` (`stated`, `inferred`, `document`) |
 | "agora", "hoje", "ontem" | `date_reference` (`now`, `today`, `yesterday`) |
 | fuso horário da conta | `timezone` |

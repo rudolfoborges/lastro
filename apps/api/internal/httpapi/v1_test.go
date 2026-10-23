@@ -40,6 +40,7 @@ type testAPI struct {
 	t        *testing.T
 	handler  http.Handler
 	accounts *accounts.Service
+	ledger   *ledger.Service
 	logs     *syncBuffer
 }
 
@@ -51,15 +52,16 @@ func newTestAPI(t *testing.T, limits config.RateLimits) *testAPI {
 	}
 	t.Cleanup(db.Close)
 	svc := accounts.NewService(db)
+	ledgerService := ledger.NewService(db)
 	logs := &syncBuffer{}
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:     slog.New(slog.NewJSONHandler(logs, nil)),
 		Database:   db,
 		Accounts:   svc,
-		Ledger:     ledger.NewService(db),
+		Ledger:     ledgerService,
 		RateLimits: limits,
 	})
-	return &testAPI{t: t, handler: handler, accounts: svc, logs: logs}
+	return &testAPI{t: t, handler: handler, accounts: svc, ledger: ledgerService, logs: logs}
 }
 
 type response struct {
