@@ -185,6 +185,9 @@ type ObservationInterpretation struct {
 	Details         []byte
 	Author          string
 	CreatedAt       time.Time
+	Effect          *string
+	TransactionID   *uuid.UUID
+	SubmissionHash  []byte
 }
 
 type PaymentMethod struct {

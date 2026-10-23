@@ -65,7 +65,9 @@ All communication with the user goes through Case, the user's AI assistant, over
 | chave de idempotência / estado da operação: concluída, pendente, falhou | `idempotency_key` / `outcome`: `completed`, `pending`, `failed` |
 | autorização dada a um aplicativo (OAuth) | `oauth_grant` |
 | cartão de crédito, cartão de débito, Pix, dinheiro | `credit_card`, `debit_card`, `pix`, `cash` |
-| tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated` |
+| tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação, incerto | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated`, `unknown` |
+| efeito da interpretação: nenhum, criou, vinculou, atualizou, anulou, criou estorno, desfeito | `effect`: `none`, `created`, `linked`, `updated`, `voided`, `refund_created`, `undone` |
+| dispositivo / versão da notificação / caixa de entrada | `wallet_device` / `wallet_notification_versions` / `inbox` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
