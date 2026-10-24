@@ -93,6 +93,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `POST /v1/api-keys` | `admin` | Creates a key with the given scopes and returns its token once |
 | `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately; the last active `admin` key cannot be revoked |
 | `POST /v1/wallet/notifications` | `wallet:ingest` | Receives one notification event from the Android app (see [Wallet notifications](#wallet-notifications)) |
+| `POST /v1/wallet/heartbeat` | `wallet:ingest` | Sign of life from the Android app with its version and permissions; answers the tracking state (see [Coverage](#coverage)) |
 
 Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
 
@@ -240,10 +241,41 @@ The Android app sends each notification event to `POST /v1/wallet/notifications`
 ```
 
 - `sent_at` is the device time when the request is sent, accepted only within 5 minutes of the server time (`400 stale_request` otherwise). There is no HMAC: the key is the credential. A retry sends a fresh `sent_at`; the rest of the body stays the same.
+- While automatic tracking is not active (it starts disabled and is turned on with `set_tracking`), the answer is `200 tracking_paused` and nothing is stored, not even the device.
 - Notifications from packages other than Google Wallet are not stored: the answer is `discarded` and only `wallet_devices.discarded_count` grows.
 - Title, text and big text are redacted before anything is persisted, and each version becomes an immutable observation `wallet_notification` pending interpretation by Case. The server never reads the text.
 - Identity is `(device_id, notification_key)` plus a hash of the redacted package, title, texts and `posted_at`. The same content again answers `200 duplicate` and writes nothing; different content (an update, or another post under a reused key) answers `201 stored` with the next `version` of the same notification.
 - `removed` only records `removed_at` on the notification. It is never treated as a cancellation and changes no transaction; a removal of a notification the server never stored answers `unknown_notification`.
+
+### Interpreting notifications
+
+A notification version is pending while its observation has no interpretation. Case lists them with `list_pending_notifications` (oldest first, keyset cursor, earlier versions of the same notification with Case's reading of each) and sends its reading back with `submit_notification_interpretations` (`ledger.Service.InterpretNotification`). Lastro applies each reading with the PRD rules as invariants:
+
+| `event_type` | Effect |
+| --- | --- |
+| `purchase` | A new transaction (`created`), with the status rule of the payment method. With `related_transaction_id` it confirms a record from the conversation instead (`linked`): the notification becomes its evidence and fills only what is missing (card, exact time, merchant), plus the amount when it differs in the same currency |
+| `purchase_update` | Corrects the transaction of an earlier version of the same notification (`updated`); never creates one |
+| `cancellation` | Voids the transaction (`voided`), unless a statement line already charges it |
+| `refund` | A separate `refund` transaction pointing at the purchase (`refund_of_id`), with its category; refunds never exceed the purchase |
+| `declined`, `notice`, `unrelated` | Nothing (`none`) |
+| `unknown` | Nothing, plus a `reading_doubt` clarification on the observation |
+
+- **Idempotency:** each interpretation stores a hash of the submitted reading. The same reading again answers `already_applied`. A different one is refused (`already_interpreted`) unless Case sends `reinterpret` with a reason; then a purchase reading corrects the same transaction, and a non-expense reading undoes the evidence and voids the transaction the notification created. Other changes are refused (`reinterpretation_not_supported`).
+- **Possible matches:** a `purchase` without `related_transaction_id` is checked against transactions of earlier versions of the same notification and against open purchases with the same amount and currency within two days that no notification confirms yet. If there are any, nothing is written and the answer is `possible_match` with the candidates and the reasons in pt-BR. Case decides: `related_transaction_id` for the same purchase, `confirm_distinct` for another.
+- **Invariants:** a transaction confirmed by one notification cannot be confirmed by another, a cancellation cannot void a charged purchase, and refunds cannot add up to more than the purchase.
+
+### Coverage
+
+Missing notifications never mean there was no spending, so Lastro tells how complete the automatic tracking was:
+
+- **Tracking periods** (`wallet_tracking_periods`): Rudolfo turns tracking on, pauses and resumes it through Case (`set_tracking`). It starts disabled. Each period also keeps the inbox interval: how often Rudolfo's routine processes the inbox (6 h by default).
+- **Heartbeats** (`wallet_heartbeats`, append-only): the app calls `POST /v1/wallet/heartbeat` every 15 minutes with `device_id`, `client_version`, `notification_access`, `battery_unrestricted`, `queue_size` and `sent_at` (same 5-minute window). The answer carries the tracking state, so the app can show it.
+- **Computed at query time**, no background job (`ledger.Service.Coverage`, MCP `get_coverage_status`):
+  - a gap is a stretch longer than 60 minutes without a heartbeat while tracking is active. Turning tracking on counts as a sign of life, and a gap that is still going on shows up 60 minutes after the last heartbeat;
+  - paused time is reported as inactive, never as a gap;
+  - a late delivery is a notification received more than 15 minutes after `posted_at`;
+  - the inbox is late when its oldest pending notification waits more than twice the inbox interval. The last time the inbox was processed is the last completed `list_pending_notifications` call in `tool_calls`;
+  - the coverage is `complete` only when tracking was active for the whole period, with no gaps, notification access and nothing pending. Every limitation comes as a pt-BR sentence for Case to relay before any total of that period (PRD criterion 11).
 
 ### Idempotency
 
@@ -287,7 +319,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -298,8 +330,12 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `list_transactions` | `expenses:read` | Lists by purchase period, status, category and payment method, without totals |
 | `list_clarifications` | `expenses:read` | Lists pending questions by kind, status and purchase period |
 | `resolve_clarification` | `expenses:write` | Answers (`resolve`) or closes (`dismiss`) a question |
+| `list_pending_notifications` | `expenses:read` | Google Wallet notifications waiting for Case's interpretation, oldest first, with earlier versions |
+| `submit_notification_interpretations` | `expenses:write` | Applies Case's reading of up to 50 notification versions, each on its own |
+| `get_coverage_status` | `expenses:read` | Tracking state, gaps, pauses, late deliveries, inbox and phone status for a period of days, with the limitations to relay |
+| `set_tracking` | `expenses:write` | Turns automatic tracking on or off and sets the inbox interval, only when Rudolfo asks |
 
-Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction.
+Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` is the exception: it is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)).
 
 ## Sensitive data
 

@@ -63,6 +63,7 @@ func NewHandler(deps Deps) http.Handler {
 
 	if deps.Ledger != nil {
 		mux.HandleFunc("POST /v1/wallet/notifications", a.authenticated(accounts.ScopeWalletIngest, a.handleWalletNotification))
+		mux.HandleFunc("POST /v1/wallet/heartbeat", a.authenticated(accounts.ScopeWalletIngest, a.handleWalletHeartbeat))
 	}
 
 	if deps.MCP != nil {

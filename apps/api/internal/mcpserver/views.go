@@ -52,6 +52,7 @@ type TransactionOutput struct {
 	Status              string                    `json:"status"`
 	Purpose             *string                   `json:"purpose,omitempty"`
 	Installments        *InstallmentsOutput       `json:"installments,omitempty"`
+	RefundOf            *string                   `json:"refund_of,omitempty" jsonschema:"the purchase this refund returns money from"`
 	Category            *CategoryAllocationOutput `json:"category,omitempty"`
 	CreatedAt           string                    `json:"created_at"`
 }
@@ -101,6 +102,10 @@ func transactionOutput(tr ledger.Transaction, category *ledger.Allocation) Trans
 	if tr.OriginalAmount != nil {
 		original := moneyOutput(*tr.OriginalAmount)
 		out.OriginalAmount = &original
+	}
+	if tr.RefundOfID != nil {
+		refundOf := tr.RefundOfID.String()
+		out.RefundOf = &refundOf
 	}
 	if tr.PaymentMethod != nil {
 		out.PaymentMethod = &PaymentMethodOutput{Kind: string(tr.PaymentMethod.Kind), CardLast4: tr.PaymentMethod.CardLast4}
