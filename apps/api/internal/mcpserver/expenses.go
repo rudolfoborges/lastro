@@ -33,6 +33,8 @@ type RecordExpenseInput struct {
 	Purpose              string `json:"purpose,omitempty" jsonschema:"why the money was spent, only when Rudolfo said it"`
 	InstallmentCount     int    `json:"installment_count,omitempty" jsonschema:"number of installments, from 2 to 120"`
 	InstallmentAmount    string `json:"installment_amount,omitempty" jsonschema:"value of each installment as a canonical decimal"`
+	Nature               string `json:"nature,omitempty" jsonschema:"expense (default), or refund when Rudolfo got money back for a purchase"`
+	RefundOfID           string `json:"refund_of_id,omitempty" jsonschema:"for a refund: the purchase it returns money from, when you know which one"`
 	RelatedTransactionID string `json:"related_transaction_id,omitempty" jsonschema:"a possible_match candidate that is this same purchase: the conversation becomes its evidence instead of a new transaction"`
 	ConfirmDistinct      bool   `json:"confirm_distinct,omitempty" jsonschema:"true only after a possible_duplicate or possible_match turned out to be another real purchase"`
 	DeferMatch           bool   `json:"defer_match,omitempty" jsonschema:"true when you cannot decide on a possible_match now: Lastro records it apart, pending clarification, and opens a possible_match question for Rudolfo"`
@@ -59,7 +61,7 @@ func (s *Server) registerExpenses() {
 	addTool(s, toolSpec{
 		name:  "record_expense",
 		title: "Record an expense from the conversation",
-		description: "Records an expense Rudolfo reported, already understood and classified by you. Lastro validates it, deduplicates it by request_id and warns when the same text and amount arrive again in this conversation. " +
+		description: "Records an expense Rudolfo reported, or a refund he got (nature refund), already understood and classified by you. Lastro validates it, deduplicates it by request_id, warns when the same text and amount arrive again in this conversation and offers records of the same purchase from Google Wallet or a statement. " +
 			"Partial records are fine when what is missing does not change the amount or the purchase (for example the payment method); missing amount or identity returns needs_clarification and records nothing. " +
 			"Read get_instructions topic conversation first.",
 		scope:      accounts.ScopeExpensesWrite,
@@ -69,6 +71,7 @@ func (s *Server) registerExpenses() {
 			"date_reference":  {"now", "today", "yesterday"},
 			"payment_method":  enumValues([]ledger.PaymentKind{ledger.PaymentCreditCard, ledger.PaymentDebitCard, ledger.PaymentPix, ledger.PaymentCash}),
 			"category_status": {"suggested", "confirmed"},
+			"nature":          {"expense", "refund"},
 		},
 	}, func(ctx context.Context, c call, in RecordExpenseInput) (RecordExpenseOutput, error) {
 		report, err := expenseReport(c, in)
@@ -99,8 +102,12 @@ func expenseReport(c call, in RecordExpenseInput) (ledger.ExpenseReport, error) 
 		Purpose:         optionalString(in.Purpose),
 		ConfirmDistinct: in.ConfirmDistinct,
 		DeferMatch:      in.DeferMatch,
+		Nature:          ledger.Nature(strings.TrimSpace(in.Nature)),
 	}
 	var err error
+	if report.RefundOfID, err = optionalID("refund_of_id", in.RefundOfID); err != nil {
+		return report, err
+	}
 	if strings.TrimSpace(in.RelatedTransactionID) != "" {
 		related, err := parseID("related_transaction_id", in.RelatedTransactionID)
 		if err != nil {

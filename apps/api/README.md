@@ -209,11 +209,11 @@ Each transaction has **one category**, stored in `category_allocations` as a sin
 | `recorded` | `completed` | Written; the answer lists `inferred` and `pending` fields |
 | `duplicate_of` | `completed` | The same `request_id` was already recorded; the existing transaction is returned |
 | `possible_duplicate` | `pending` | Nothing written: the same amount and normalized text arrived in the same ChatGPT conversation (`_meta["openai/session"]`) in the last 24 hours. Case asks Rudolfo and, for a second real purchase, repeats the call with `confirm_distinct: true` |
-| `possible_match` | `pending` | Nothing written: Google Wallet or a statement already recorded an open purchase with the same amount within two days (see [Matching sources](#matching-sources)). Case repeats the call with `related_transaction_id` (same purchase) or `confirm_distinct: true` |
+| `possible_match` | `pending` | Nothing written: Google Wallet or a statement already recorded an open transaction of the same nature with the same amount within two days (see [Matching sources](#matching-sources)). Case repeats the call with `related_transaction_id` (same purchase) or `confirm_distinct: true` |
 | `linked` | `completed` | The conversation became evidence of an existing transaction and filled only what was missing (merchant, purpose, card, date, installments, a category Rudolfo said); nothing new was created |
 | `needs_clarification` | `pending` | Nothing written: the amount or what was bought is missing; `question` says what to ask |
 
-Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments create an installment plan (see [Installment plans](#installment-plans)).
+Refunds are recorded with `nature: "refund"` and, when Case knows the purchase, `refund_of_id` (see [Refunds and currencies](#refunds-and-currencies)). Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments create an installment plan (see [Installment plans](#installment-plans)).
 
 ### Clarifications
 
@@ -311,6 +311,21 @@ A purchase in installments has one row in `installment_plans` (#40): modality (`
 - **Merges** carry the plan to the survivor, or fill the survivor's plan (total, known installment amount; the same count is required) and cancel the merged one; `undo_match` restores both.
 - **Earlier statements:** installment lines recorded before plans existed get their purchase and plan when the same reading is sent again (`already_recorded`), or when a new version keeps them.
 - `get_transaction` returns the plan with each installment (`charged`, `known_future`, `estimated`), the charged amount, its breakdown and the remaining commitment.
+
+### Refunds and currencies
+
+- **Refunds (#42)** are always their own transactions (`nature = 'refund'`), pointing to the purchase with `refund_of_id`. They come from any source:
+  - conversation: `record_expense` with `nature: "refund"` and `refund_of_id`;
+  - Google Wallet: a `refund` event;
+  - statement: a `refund` line with `refund_of_id`, in the same cycle or a later one;
+  - correction: `update_transaction` with `refund_of_id`, or `clear: ["refund_of"]`.
+  The purchase is never changed. Refunds of a purchase are in its currency and never add up to more than it. `get_transaction` on the purchase lists them with `refunded` and `net`, which views of a period (#45) attribute by date.
+- **Declined payments** (`declined`) never create or change a transaction. Whether a reported purchase went through is Case's question to Rudolfo; an uncertain one stays provisional.
+- **Foreign currencies:**
+  - a transaction keeps the amount in the currency paid, and `original_amount` only when it also has the amount charged in another currency;
+  - linking a statement line whose `original_amount` equals a transaction's amount moves the charged amount (in reais) into `amount` and keeps the foreign one as `original_amount`;
+  - matching compares original amounts exactly: there is no exchange tolerance and no conversion;
+  - amounts in different currencies are never added: refunds must share the purchase's currency, and every total (statement composition, plan) is in one currency.
 
 ### Charge components and Pix installments
 
@@ -438,7 +453,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
-| `update_transaction` | `expenses:write` | Corrects description, merchant, payee, amount, date, payment method, nature, purpose or installments, with a reason |
+| `update_transaction` | `expenses:write` | Corrects description, merchant, payee, amount, date, payment method, nature, purpose, installments or the purchase a refund belongs to, with a reason |
 | `set_category` | `expenses:write` | Sets the transaction's category (confirmed by Rudolfo, or suggested by Case) |
 | `void_transaction` | `expenses:write` | Marks a record made by mistake as voided; nothing is deleted |
 | `get_transaction` | `expenses:read` | Transaction with categories, evidence, full history and open questions |

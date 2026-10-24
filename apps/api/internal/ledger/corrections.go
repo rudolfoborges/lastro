@@ -56,16 +56,18 @@ func Cleared[T any]() Optional[T] {
 }
 
 type Patch struct {
-	Description   *string
-	Merchant      Optional[string]
-	Payee         Optional[string]
-	Amount        *money.Money
-	AmountBasis   *AmountBasis
-	Occurred      *calendar.Occurrence
-	PaymentMethod Optional[PaymentMethodRef]
-	Nature        *Nature
-	Purpose       Optional[string]
-	Installments  Optional[Installments]
+	Description    *string
+	Merchant       Optional[string]
+	Payee          Optional[string]
+	Amount         *money.Money
+	AmountBasis    *AmountBasis
+	OriginalAmount Optional[money.Money]
+	RefundOf       Optional[uuid.UUID]
+	Occurred       *calendar.Occurrence
+	PaymentMethod  Optional[PaymentMethodRef]
+	Nature         *Nature
+	Purpose        Optional[string]
+	Installments   Optional[Installments]
 }
 
 type FieldConflict struct {
@@ -203,8 +205,29 @@ func (t *tx) applyCorrection(transactionID uuid.UUID, patch Patch, reason string
 		copyField(&next, proposed, field)
 		correction.Changed = append(correction.Changed, field)
 	}
+	refundChanged := patch.RefundOf.Set && !sameRefund(current.RefundOfID, patch.RefundOf.Value)
+	if refundChanged {
+		next.RefundOfID = patch.RefundOf.Value
+		if patch.RefundOf.Value == nil {
+			cleared, err := t.linkRefund(current, next, nil, reason, actor)
+			if err != nil {
+				return Correction{}, err
+			}
+			current = cleared
+		}
+	}
 	if len(correction.Changed) == 0 {
 		correction.Transaction = current
+		if refundChanged && next.RefundOfID != nil {
+			linked, err := t.linkRefund(current, next, next.RefundOfID, reason, actor)
+			if err != nil {
+				return Correction{}, err
+			}
+			correction.Transaction = linked
+		}
+		if refundChanged {
+			correction.Changed = []Field{FieldRefundOf}
+		}
 		return t.withCategory(correction)
 	}
 	if _, err := normalizeNewTransaction(asNewTransaction(next)); err != nil {
@@ -232,6 +255,11 @@ func (t *tx) applyCorrection(transactionID uuid.UUID, patch Patch, reason string
 	if err != nil {
 		return Correction{}, err
 	}
+	if refundChanged && next.RefundOfID != nil {
+		if saved, err = t.linkRefund(saved, saved, next.RefundOfID, reason, actor); err != nil {
+			return Correction{}, err
+		}
+	}
 	for _, field := range correction.Changed {
 		if err := t.recordRevision(transactionID, string(field), fieldValue(current, field), fieldValue(saved, field), reason, actor); err != nil {
 			return Correction{}, err
@@ -247,6 +275,9 @@ func (t *tx) applyCorrection(transactionID uuid.UUID, patch Patch, reason string
 		}
 	}
 	correction.Transaction = saved
+	if refundChanged {
+		correction.Changed = append(correction.Changed, FieldRefundOf)
+	}
 	if slices.Contains(correction.Changed, FieldAmount) {
 		if err := t.followAmount(saved); err != nil {
 			return Correction{}, err
@@ -447,6 +478,12 @@ func applyPatch(current Transaction, patch Patch) (Transaction, error) {
 		if patch.AmountBasis != nil {
 			next.AmountBasis = *patch.AmountBasis
 		}
+		switch {
+		case patch.OriginalAmount.Set:
+			next.OriginalAmount = patch.OriginalAmount.Value
+		case next.OriginalAmount != nil && next.OriginalAmount.Currency == next.Amount.Currency:
+			next.OriginalAmount = nil
+		}
 		if next.Installments != nil && next.Installments.Amount != nil && next.Installments.Amount.Currency != next.Amount.Currency {
 			return Transaction{}, &ValidationError{Field: "amount", Message: "must keep the currency of the installments"}
 		}
@@ -511,7 +548,7 @@ func copyField(dst *Transaction, src Transaction, field Field) {
 	case FieldPayee:
 		dst.Payee = src.Payee
 	case FieldAmount:
-		dst.Amount, dst.AmountBasis = src.Amount, src.AmountBasis
+		dst.Amount, dst.AmountBasis, dst.OriginalAmount = src.Amount, src.AmountBasis, src.OriginalAmount
 	case FieldOccurred:
 		dst.Occurred = src.Occurred
 	case FieldPaymentMethod:
@@ -534,9 +571,12 @@ func fieldValue(tr Transaction, field Field) json.RawMessage {
 	case FieldPayee:
 		return jsonValue(tr.Payee)
 	case FieldAmount:
-		value := map[string]string{"amount": tr.Amount.Decimal(), "currency": tr.Amount.Currency}
+		value := map[string]any{"amount": tr.Amount.Decimal(), "currency": tr.Amount.Currency}
 		if tr.AmountBasis == AmountInstallment {
 			value["basis"] = string(AmountInstallment)
+		}
+		if tr.OriginalAmount != nil {
+			value["original"] = amountJSON(*tr.OriginalAmount)
 		}
 		return jsonValue(value)
 	case FieldOccurred:
@@ -594,4 +634,30 @@ func jsonValue(value any) json.RawMessage {
 		panic(fmt.Sprintf("encode revision value: %v", err))
 	}
 	return encoded
+}
+
+func sameRefund(current, proposed *uuid.UUID) bool {
+	return (current == nil && proposed == nil) || (current != nil && proposed != nil && *current == *proposed)
+}
+
+func (t *tx) linkRefund(current, next Transaction, purchaseID *uuid.UUID, reason string, actor Actor) (Transaction, error) {
+	if purchaseID != nil {
+		if next.Nature != NatureRefund {
+			return Transaction{}, &ValidationError{Field: "refund_of_id", Message: "applies only to a refund; send nature refund too"}
+		}
+		if *purchaseID == current.ID {
+			return Transaction{}, &ValidationError{Field: "refund_of_id", Message: "must be another transaction"}
+		}
+		if _, err := t.refundable(*purchaseID, next.Amount, "refund_of_id"); err != nil {
+			return Transaction{}, err
+		}
+	}
+	row, err := t.q.SetRefundOf(t.ctx, tenantdb.SetRefundOfParams{AccountID: t.accountID, ID: current.ID, RefundOfID: purchaseID})
+	if err != nil {
+		return Transaction{}, fmt.Errorf("set refund of: %w", err)
+	}
+	if err := t.recordRevision(current.ID, string(FieldRefundOf), jsonValue(current.RefundOfID), jsonValue(purchaseID), reason, actor); err != nil {
+		return Transaction{}, err
+	}
+	return toTransaction(row, current.PaymentMethod), nil
 }

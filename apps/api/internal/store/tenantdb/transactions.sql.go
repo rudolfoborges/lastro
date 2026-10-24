@@ -212,6 +212,64 @@ func (q *Queries) ListPaymentMethods(ctx context.Context, accountID uuid.UUID) (
 	return items, nil
 }
 
+const listRefundsOf = `-- name: ListRefundsOf :many
+SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
+FROM transactions
+WHERE account_id = $1 AND refund_of_id = $2 AND status NOT IN ('voided', 'merged')
+ORDER BY occurred_on NULLS LAST, created_at, id
+`
+
+type ListRefundsOfParams struct {
+	AccountID  uuid.UUID
+	RefundOfID *uuid.UUID
+}
+
+func (q *Queries) ListRefundsOf(ctx context.Context, arg ListRefundsOfParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listRefundsOf, arg.AccountID, arg.RefundOfID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.OriginalDescription,
+			&i.Description,
+			&i.Merchant,
+			&i.Payee,
+			&i.AmountMinor,
+			&i.Currency,
+			&i.OriginalAmountMinor,
+			&i.OriginalCurrency,
+			&i.OccurredAt,
+			&i.OccurredOn,
+			&i.DatePrecision,
+			&i.DateSource,
+			&i.PaymentMethodID,
+			&i.Nature,
+			&i.Status,
+			&i.Purpose,
+			&i.InstallmentCount,
+			&i.InstallmentAmountMinor,
+			&i.RefundOfID,
+			&i.MergedIntoID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AmountBasis,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTransactions = `-- name: ListTransactions :many
 SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at, t.amount_basis
 FROM transactions t
@@ -322,6 +380,52 @@ type LockTransactionParams struct {
 
 func (q *Queries) LockTransaction(ctx context.Context, arg LockTransactionParams) (Transaction, error) {
 	row := q.db.QueryRow(ctx, lockTransaction, arg.AccountID, arg.ID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.OriginalDescription,
+		&i.Description,
+		&i.Merchant,
+		&i.Payee,
+		&i.AmountMinor,
+		&i.Currency,
+		&i.OriginalAmountMinor,
+		&i.OriginalCurrency,
+		&i.OccurredAt,
+		&i.OccurredOn,
+		&i.DatePrecision,
+		&i.DateSource,
+		&i.PaymentMethodID,
+		&i.Nature,
+		&i.Status,
+		&i.Purpose,
+		&i.InstallmentCount,
+		&i.InstallmentAmountMinor,
+		&i.RefundOfID,
+		&i.MergedIntoID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AmountBasis,
+	)
+	return i, err
+}
+
+const setRefundOf = `-- name: SetRefundOf :one
+UPDATE transactions
+SET refund_of_id = $1, updated_at = now()
+WHERE account_id = $2 AND id = $3
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
+`
+
+type SetRefundOfParams struct {
+	RefundOfID *uuid.UUID
+	AccountID  uuid.UUID
+	ID         uuid.UUID
+}
+
+func (q *Queries) SetRefundOf(ctx context.Context, arg SetRefundOfParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, setRefundOf, arg.RefundOfID, arg.AccountID, arg.ID)
 	var i Transaction
 	err := row.Scan(
 		&i.ID,

@@ -67,6 +67,7 @@ var fieldLabels = map[Field]string{
 	FieldNature:        "a natureza",
 	FieldPurpose:       "a finalidade",
 	FieldInstallments:  "o parcelamento",
+	FieldRefundOf:      "a compra estornada",
 	fieldCategory:      "a categoria",
 }
 

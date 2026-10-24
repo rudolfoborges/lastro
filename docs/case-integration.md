@@ -222,3 +222,5 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] The next statement chains each "n/N" line of October's plans by itself (`linked`) and asks only when two plans could take the same installment.
 - [ ] A Pix parcelado without purpose shows up in "quais dúvidas eu tenho?" with the question about goods, transfer or refinancing; answering it does not change the statement total.
 - [ ] "Quanto do Pix parcelado é juros?" is answered from the plan's `breakdown` when the statement details it; otherwise Case says the composition was not informed.
+- [ ] "A loja devolveu 30 daquela compra de 100" records a refund linked to the purchase; `get_transaction` on the purchase shows R$ 70,00 net and both records.
+- [ ] A purchase paid in dollars ("gastei US$ 20 no app") stays in dollars until the statement; linking the statement line keeps US$ 20,00 as the original and R$ charged as the amount.
