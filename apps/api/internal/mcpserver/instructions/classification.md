@@ -33,4 +33,4 @@ Use the codes returned by `list_categories`. The defaults are:
 6. **One category per purchase.** When a receipt mixes things, use the category of what dominates it.
 7. **Corrections stick.** A category Rudolfo confirmed is never replaced by a new suggestion. If a new check disagrees, Lastro opens a clarification instead of changing it.
 8. **Rules for the future** apply only when Rudolfo says a guidance must always hold ("sempre que for na padaria X, é café da manhã"). A one-off correction is not a rule.
-9. **When in doubt, `unidentified`.** A transaction without a category counts as "Não identificado" and shows up in `list_clarifications`.
+9. **When in doubt, `unidentified`.** A transaction without a category, or with `unidentified` as your suggestion, counts as "Não identificado" and keeps a `category_unknown` question in `list_clarifications` until Rudolfo answers. If he cannot tell either, send `unidentified` as `confirmed`.

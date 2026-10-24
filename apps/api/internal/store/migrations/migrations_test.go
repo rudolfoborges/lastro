@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -77,6 +78,67 @@ func TestConversationIDsAlreadyStoredAreReplacedByTheirHash(t *testing.T) {
 	want := sha256.Sum256([]byte("v1/conversation-abc"))
 	if _, kept := payload["conversation"]; kept || payload["conversation_hash"] != hex.EncodeToString(want[:]) || payload["raw_text"] != "Gastei 10 reais" {
 		t.Errorf("payload = %+v, want the conversation ID replaced by its SHA-256", payload)
+	}
+}
+
+func TestTransactionsLeftAsUnidentifiedByCaseGetTheCategoryQuestion(t *testing.T) {
+	ctx := t.Context()
+	databaseURL := storetest.EmptyDatabaseURL(t)
+	migrator, err := migrations.Open(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrator.Close() })
+	if _, err := migrator.UpTo(ctx, 17); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	_, err = conn.Exec(ctx, `
+		INSERT INTO accounts (id, name) VALUES ('0199f0a0-0000-7000-8000-000000000001', 'Rudolfo');
+		INSERT INTO categories (id, account_id, code, label) VALUES
+		    ('0199f0a0-0000-7000-8000-0000000000c1', '0199f0a0-0000-7000-8000-000000000001', 'unidentified', 'Não identificado'),
+		    ('0199f0a0-0000-7000-8000-0000000000c2', '0199f0a0-0000-7000-8000-000000000001', 'groceries', 'Mercado');
+		INSERT INTO transactions (id, account_id, original_description, description, amount_minor, currency, occurred_on, date_precision, date_source, nature, status) VALUES
+		    ('0199f0a0-0000-7000-8000-0000000000a1', '0199f0a0-0000-7000-8000-000000000001', 'PADARIA EXEMPLO', 'Padaria Exemplo', 123456, 'BRL', '2026-09-14', 'day', 'document', 'expense', 'confirmed'),
+		    ('0199f0a0-0000-7000-8000-0000000000a2', '0199f0a0-0000-7000-8000-000000000001', 'APP EXEMPLO', 'App Exemplo', 990, 'USD', '2026-09-01', 'month', 'document', 'expense', 'confirmed'),
+		    ('0199f0a0-0000-7000-8000-0000000000a3', '0199f0a0-0000-7000-8000-000000000001', 'LOJA EXEMPLO', 'Loja Exemplo', 5000, 'BRL', '2026-09-15', 'day', 'document', 'expense', 'confirmed'),
+		    ('0199f0a0-0000-7000-8000-0000000000a4', '0199f0a0-0000-7000-8000-000000000001', 'MERCADO EXEMPLO', 'Mercado Exemplo', 5000, 'BRL', '2026-09-16', 'day', 'document', 'expense', 'confirmed'),
+		    ('0199f0a0-0000-7000-8000-0000000000a5', '0199f0a0-0000-7000-8000-000000000001', 'BAZAR EXEMPLO', 'Bazar Exemplo', 5000, 'BRL', '2026-09-17', 'day', 'document', 'expense', 'confirmed');
+		INSERT INTO category_allocations (id, account_id, transaction_id, category_id, amount_minor, status, origin) VALUES
+		    ('0199f0a0-0000-7000-8000-0000000000b1', '0199f0a0-0000-7000-8000-000000000001', '0199f0a0-0000-7000-8000-0000000000a1', '0199f0a0-0000-7000-8000-0000000000c1', 123456, 'suggested', 'agent'),
+		    ('0199f0a0-0000-7000-8000-0000000000b2', '0199f0a0-0000-7000-8000-000000000001', '0199f0a0-0000-7000-8000-0000000000a2', '0199f0a0-0000-7000-8000-0000000000c1', 990, 'suggested', 'agent'),
+		    ('0199f0a0-0000-7000-8000-0000000000b3', '0199f0a0-0000-7000-8000-000000000001', '0199f0a0-0000-7000-8000-0000000000a3', '0199f0a0-0000-7000-8000-0000000000c1', 5000, 'confirmed', 'user'),
+		    ('0199f0a0-0000-7000-8000-0000000000b4', '0199f0a0-0000-7000-8000-000000000001', '0199f0a0-0000-7000-8000-0000000000a4', '0199f0a0-0000-7000-8000-0000000000c2', 5000, 'suggested', 'agent'),
+		    ('0199f0a0-0000-7000-8000-0000000000b5', '0199f0a0-0000-7000-8000-000000000001', '0199f0a0-0000-7000-8000-0000000000a5', '0199f0a0-0000-7000-8000-0000000000c1', 5000, 'suggested', 'agent');
+		INSERT INTO clarifications (id, account_id, kind, transaction_id, subject, dedup_key, question, status, resolution, resolved_by, resolved_at)
+		VALUES ('0199f0a0-0000-7000-8000-0000000000d5', '0199f0a0-0000-7000-8000-000000000001', 'category_unknown', '0199f0a0-0000-7000-8000-0000000000a5', 'transaction',
+		        'category_unknown|transaction|transaction:0199f0a0-0000-7000-8000-0000000000a5', 'Qual a categoria?', 'dismissed', 'não lembro', 'user', now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := migrator.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := conn.Query(ctx, "SELECT question FROM clarifications WHERE status = 'open' ORDER BY question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`Qual a categoria de "App Exemplo" (US$ 9,90, 09/2026)?`,
+		`Qual a categoria de "Padaria Exemplo" (R$ 1.234,56, 14/09/2026)?`,
+	}
+	if !slices.Equal(questions, want) {
+		t.Errorf("open questions = %q, want only the suggested unidentified ones that were never dismissed", questions)
 	}
 }
 

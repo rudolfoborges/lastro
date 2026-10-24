@@ -15,6 +15,7 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/tenantdb"
+	"github.com/rudolfoborges/lastro/apps/api/internal/taxonomy"
 )
 
 type ClarificationKind string
@@ -279,7 +280,7 @@ func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 	switch {
 	case !slices.Contains(categorizedNatures, transaction.Nature):
 		err = t.closeTransactionClarifications(transactionID, []ClarificationKind{ClarificationCategoryUnknown}, ClarificationResolved, "Categoria não se aplica a esta natureza.")
-	case current == nil:
+	case !categoryKnown(current):
 		err = t.openClarification(newClarification{
 			kind:          ClarificationCategoryUnknown,
 			transactionID: &transactionID,
@@ -301,6 +302,10 @@ func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 		})
 	}
 	return t.closeTransactionClarifications(transactionID, []ClarificationKind{ClarificationPurposeUnknown}, ClarificationResolved, "Finalidade informada ou não se aplica mais.")
+}
+
+func categoryKnown(current *Allocation) bool {
+	return current != nil && (current.Code != taxonomy.Unidentified || current.Status == AllocationConfirmed)
 }
 
 func (t *tx) openConflicts(transaction Transaction, conflicts []FieldConflict, actor Actor) error {

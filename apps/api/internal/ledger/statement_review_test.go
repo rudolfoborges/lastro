@@ -74,6 +74,18 @@ func TestADifferenceIsShownAndNeverHiddenInAnAdjustment(t *testing.T) {
 	}
 }
 
+func TestLinesLeftAsUnidentifiedArePendingInTheReview(t *testing.T) {
+	f := newFixture(t)
+	in := reconciledStatement()
+	in.Items[1].Category = ptr("unidentified")
+
+	review := f.submitStatement(in).Review
+
+	if review.Status != ledger.ReviewReconciled || len(review.Pending) != 1 || review.Pending[0].Kind != ledger.PendingClarifications {
+		t.Errorf("review = %+v, want reconciled with the category question pending", review)
+	}
+}
+
 func TestAnIncompleteReadingIsNeverReconciled(t *testing.T) {
 	f := newFixture(t)
 	partial := reconciledStatement()
