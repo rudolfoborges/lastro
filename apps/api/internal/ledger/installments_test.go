@@ -184,9 +184,13 @@ func TestInstallmentLinesWithoutAPurchaseGetOneWhenTheStatementIsSentAgain(t *te
 	f.exec("UPDATE transactions SET status = 'voided' WHERE id = $1", legacy)
 
 	again := f.submitStatement(statement)
+	unchanged := f.submitStatement(statement)
 
-	if again.Result != ledger.StatementAlreadyRecorded || again.Lines[0].Transaction == nil || again.Lines[0].Transaction.ID == legacy {
-		t.Fatalf("resubmission = %s, line = %+v, want the line given a purchase", again.Result, again.Lines[0])
+	if again.Result != ledger.StatementPlanned || again.Planned != 1 || again.Lines[0].Effect != ledger.EffectCreated || again.Lines[0].Transaction == nil || again.Lines[0].Transaction.ID == legacy {
+		t.Fatalf("resubmission = %s (%d planned), line = %+v, want the line given a purchase", again.Result, again.Planned, again.Lines[0])
+	}
+	if unchanged.Result != ledger.StatementAlreadyRecorded || unchanged.Planned != 0 {
+		t.Errorf("third submission = %s (%d planned), want nothing left to change", unchanged.Result, unchanged.Planned)
 	}
 	if plan := f.plan(again.Lines[0].Transaction.ID); plan.Charged != brl(10000) {
 		t.Errorf("plan = %+v, want installment 3 charged", plan)
@@ -238,5 +242,30 @@ func TestMergingAToldInstallmentPurchaseFillsTheStatementPlan(t *testing.T) {
 	}
 	if told := f.plan(told.ID); told.Total == nil || *told.Total != brl(120000) {
 		t.Errorf("told plan after the undo = %+v, want it active again", told)
+	}
+}
+
+func TestADryRunOfARecordedStatementNeverWritesTheInstallmentPlans(t *testing.T) {
+	f := newFixture(t)
+	statement := installmentStatement("2026-10-03", "2026-10-10", "2026-09-04", installmentLine("LOJA DE MOVEIS 03/10", 3, 10, 10000, "2026-07-02"))
+	first := f.submitStatement(statement)
+	legacy := first.Lines[0].Transaction.ID
+	f.exec("UPDATE transaction_evidence SET status = 'undone' WHERE transaction_id = $1", legacy)
+	f.exec("UPDATE installment_plans SET canceled_at = now() WHERE transaction_id = $1", legacy)
+	f.exec("UPDATE transactions SET status = 'voided' WHERE id = $1", legacy)
+	transactions, plans := f.count("transactions"), f.count("installment_plans")
+	statement.DryRun = true
+
+	previewed := f.submitStatement(statement)
+	idle := f.submitStatement(statement)
+
+	if previewed.Result != ledger.StatementPreviewed || previewed.Planned != 1 {
+		t.Fatalf("dry run = %s (%d planned), want a preview of the plan", previewed.Result, previewed.Planned)
+	}
+	if f.count("transactions") != transactions || f.count("installment_plans") != plans || f.countWhere("transaction_evidence", "status = 'confirmed'") != 0 {
+		t.Errorf("transactions = %d, plans = %d, want nothing written by a dry run", f.count("transactions"), f.count("installment_plans"))
+	}
+	if idle.Result != ledger.StatementPreviewed || idle.Planned != 1 {
+		t.Errorf("second dry run = %s (%d planned), want the same preview, since nothing was kept", idle.Result, idle.Planned)
 	}
 }

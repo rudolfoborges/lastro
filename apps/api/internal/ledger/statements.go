@@ -205,6 +205,7 @@ const (
 	StatementPreviewed       StatementResult = "previewed"
 	StatementNewVersion      StatementResult = "new_version"
 	StatementAlreadyRecorded StatementResult = "already_recorded"
+	StatementPlanned         StatementResult = "installments_planned"
 	StatementPossibleMatch   StatementResult = "possible_match"
 )
 
@@ -230,6 +231,7 @@ type ItemCandidates struct {
 
 type StatementSubmission struct {
 	Result     StatementResult
+	Planned    int
 	Statement  *Statement
 	Lines      []StatementLine
 	Candidates []ItemCandidates
