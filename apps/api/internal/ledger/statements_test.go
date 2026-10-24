@@ -55,6 +55,7 @@ func syntheticStatement() ledger.StatementExtraction {
 	fee.Category = ptr("financial_charges")
 	refund := line(ledger.ItemRefund, "ESTORNO LOJA EXEMPLO", 3000, "2026-09-25", 3)
 	refund.ConfirmDistinct = true
+	refund.Category = ptr("home")
 	unknown := line(ledger.ItemUnknown, "AJ CRED 0001", 1234, "2026-09-28", 4)
 	unknown.Direction = ledger.DirectionCredit
 	return ledger.StatementExtraction{
@@ -127,13 +128,13 @@ func TestACompleteStatementBecomesLinesWithTheirAnchors(t *testing.T) {
 		t.Errorf("category = %+v", out.Lines[2].Category)
 	}
 	doubts := 0
-	for _, c := range out.Clarifications {
+	for _, c := range out.Review.Clarifications {
 		if c.Kind == ledger.ClarificationReadingDoubt && c.StatementID != nil && *c.StatementID == out.Statement.ID {
 			doubts++
 		}
 	}
 	if doubts != 2 {
-		t.Errorf("clarifications = %+v, want the reading doubt and the unknown line", out.Clarifications)
+		t.Errorf("clarifications = %+v, want the reading doubt and the unknown line", out.Review.Clarifications)
 	}
 }
 
@@ -219,7 +220,7 @@ func TestCardNumbersInTheReadingAreRedactedBeforeTheyAreStored(t *testing.T) {
 	if strings.Contains(out.Lines[1].Excerpt, "4111 1111") {
 		t.Errorf("line excerpt = %q, want the card number masked", out.Lines[1].Excerpt)
 	}
-	for _, c := range out.Clarifications {
+	for _, c := range out.Review.Clarifications {
 		if excerpt, _ := c.Context["excerpt"].(string); strings.Contains(excerpt, "4111 1111") {
 			t.Errorf("clarification context = %+v, want the card number masked", c.Context)
 		}

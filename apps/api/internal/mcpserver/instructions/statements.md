@@ -62,6 +62,10 @@ Installments (`installment`, `pix_installment`) stay on the statement until Last
 - A passage you could not read or interpret safely goes in `reading_doubts`, with `page`, `excerpt` and a `question` in Portuguese.
 - If you could not read everything (an unreadable page, a cut table), send `reading: "partial"` and say in `missing` what is missing. Never send `complete` when a page was skipped.
 
+## Check before recording
+
+Send the reading first with `dry_run: true`. Lastro validates it, matches it against what is already recorded and returns the review (composition, computed total and status) without recording anything (`result: "previewed"`). If the computed total does not match the printed total, look for a missing or misread line before recording: a difference usually means your reading is wrong, not the bank. Then send the same reading without `dry_run`.
+
 ## Purchases already recorded
 
 Rudolfo's credit card purchases told in the conversation or seen in Google Wallet notifications are waiting for the statement as provisional transactions. Send the reading without links first. When a `purchase` or `refund` line may be one of them, Lastro answers `possible_match`: nothing is recorded, and `candidates` lists, for each item `index`, the transactions and the reasons. Then send the **whole reading again**, with each listed item decided:
@@ -75,12 +79,27 @@ You may also link any line (installments and charges too) to a transaction you a
 ## Reading the answer
 
 - `recorded`: done. Each line says its `effect`: `created` (a new transaction), `linked` (an existing one, now confirmed) or `none` (kept only in the statement: installments and unknown lines).
+- `previewed`: the dry run passed; nothing was recorded.
 - `already_recorded`: you had sent the same reading before; nothing changed.
 - `possible_match` (`outcome: "pending"`): nothing was recorded; see above.
 - `outcome: "failed"`: nothing was recorded. `field` points to the problem, such as `items[3].page`; fix it and send the whole reading again.
   - `statement_version_not_supported`: a different reading of this statement is already recorded. Tell Rudolfo what differs; Lastro does not compare versions yet.
 
+Every answer carries `review`:
+
+- `status`:
+  - `reconciled` when the reading is complete and the total Lastro computed from the lines (previous balance, plus charges, minus payments and credits) explains the printed total;
+  - `divergent` when there is a difference, shown in cents and never hidden in an adjustment;
+  - `read_incomplete` while the reading is partial or has unknown lines or reading doubts.
+- `reconciled` never means **paid**: only a payment line in a later statement shows that.
+- `pending` lists what is still missing, ready to relay.
+
 Tell Rudolfo, using `summary`, what was recorded and ask the open questions in `clarifications`.
+
+## Later
+
+- "O que falta conferir nesta fatura?": `get_statement_review` (the latest statement by default, or `closing_date`), then relay `pending` and the open questions. `list_clarifications` with `statement_id` lists only the questions about that statement.
+- "Onde está essa compra na fatura?": `get_statement_line_source` with the `transaction_id` (or `statement_id` and `index`) returns the page and the excerpt you sent, so Rudolfo finds the line in his PDF.
 
 ## Never
 

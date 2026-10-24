@@ -87,11 +87,12 @@ type Clarification struct {
 }
 
 type ClarificationFilter struct {
-	Kinds  []ClarificationKind
-	Status ClarificationStatus
-	From   *calendar.Date
-	To     *calendar.Date
-	Limit  int
+	Kinds       []ClarificationKind
+	Status      ClarificationStatus
+	From        *calendar.Date
+	To          *calendar.Date
+	StatementID *uuid.UUID
+	Limit       int
 }
 
 type ResolutionAction string
@@ -151,12 +152,13 @@ func (s *Service) Clarifications(ctx context.Context, accountID uuid.UUID, filte
 	var clarifications []Clarification
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		rows, err := t.q.ListClarifications(t.ctx, tenantdb.ListClarificationsParams{
-			AccountID: t.accountID,
-			Status:    string(filter.Status),
-			Kinds:     kinds,
-			FromDate:  dateTime(filter.From),
-			ToDate:    dateTime(filter.To),
-			MaxRows:   int32(limit), //nolint:gosec // bounded above
+			AccountID:   t.accountID,
+			Status:      string(filter.Status),
+			Kinds:       kinds,
+			FromDate:    dateTime(filter.From),
+			ToDate:      dateTime(filter.To),
+			StatementID: filter.StatementID,
+			MaxRows:     int32(limit), //nolint:gosec // bounded above
 		})
 		if err != nil {
 			return fmt.Errorf("list clarifications: %w", err)

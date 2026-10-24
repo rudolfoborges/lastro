@@ -68,6 +68,7 @@ type SubmitStatementExtractionInput struct {
 	FileSHA256      string               `json:"file_sha256,omitempty" jsonschema:"SHA-256 of the PDF in hexadecimal, only if you can compute it"`
 	Items           []StatementItemInput `json:"items" jsonschema:"every line of the statement, in the order printed"`
 	ReadingDoubts   []ReadingDoubtInput  `json:"reading_doubts,omitempty" jsonschema:"passages you could not interpret safely"`
+	DryRun          bool                 `json:"dry_run,omitempty" jsonschema:"true to validate and review the reading without recording anything"`
 }
 
 type StatementOutput struct {
@@ -104,12 +105,80 @@ type ItemCandidatesOutput struct {
 
 type SubmitStatementExtractionOutput struct {
 	Outcome        Outcome                `json:"outcome"`
-	Result         string                 `json:"result" jsonschema:"recorded, already_recorded or possible_match"`
+	Result         string                 `json:"result" jsonschema:"recorded, previewed (dry_run: nothing recorded), already_recorded or possible_match"`
 	Statement      *StatementOutput       `json:"statement,omitempty"`
+	Review         *StatementReviewOutput `json:"review,omitempty" jsonschema:"composition, computed total and status of the statement"`
 	Lines          []StatementLineOutput  `json:"lines,omitempty"`
 	Candidates     []ItemCandidatesOutput `json:"candidates,omitempty" jsonschema:"for possible_match: existing transactions that may be the same charge as an item"`
-	Clarifications []ClarificationOutput  `json:"clarifications,omitempty" jsonschema:"open questions about this statement"`
+	Clarifications []ClarificationOutput  `json:"clarifications,omitempty" jsonschema:"open questions about this statement and its transactions"`
 	Summary        string                 `json:"summary"`
+}
+
+type CompositionGroupOutput struct {
+	Amount MoneyOutput `json:"amount"`
+	Lines  int         `json:"lines"`
+}
+
+type StatementCompositionOutput struct {
+	PreviousBalance *MoneyOutput           `json:"previous_balance,omitempty" jsonschema:"as printed; it explains the charge but is not new spending"`
+	Purchases       CompositionGroupOutput `json:"purchases"`
+	Installments    CompositionGroupOutput `json:"installments" jsonschema:"installments and Pix installments charged in this cycle"`
+	Charges         CompositionGroupOutput `json:"charges" jsonschema:"interest, fees and taxes"`
+	Payments        CompositionGroupOutput `json:"payments" jsonschema:"subtracted from the total"`
+	Credits         CompositionGroupOutput `json:"credits" jsonschema:"credits and refunds, subtracted from the total"`
+	Adjustments     CompositionGroupOutput `json:"adjustments" jsonschema:"net of adjustments: positive adds, negative subtracts"`
+	Unknown         CompositionGroupOutput `json:"unknown" jsonschema:"net of lines not interpreted yet"`
+	ComputedTotal   MoneyOutput            `json:"computed_total" jsonschema:"previous balance plus charged lines minus payments and credits, computed by Lastro"`
+	InformedTotal   MoneyOutput            `json:"informed_total" jsonschema:"total printed on the statement"`
+	Difference      MoneyOutput            `json:"difference" jsonschema:"informed minus computed; zero when the composition explains the printed total"`
+}
+
+type ReviewPendingOutput struct {
+	Kind        string `json:"kind" jsonschema:"partial_reading, unknown_lines, reading_doubts, difference or clarifications"`
+	Description string `json:"description" jsonschema:"in Portuguese, to relay to Rudolfo"`
+}
+
+type StatementReviewOutput struct {
+	Status      string                     `json:"status" jsonschema:"reconciled (the reading is complete and the composition explains the printed total), divergent or read_incomplete; reconciled never means paid"`
+	Composition StatementCompositionOutput `json:"composition"`
+	Pending     []ReviewPendingOutput      `json:"pending,omitempty" jsonschema:"what is still missing to check this statement"`
+}
+
+type GetStatementReviewInput struct {
+	StatementID string `json:"statement_id,omitempty" jsonschema:"statement to review; omit for the latest closing date"`
+	ClosingDate string `json:"closing_date,omitempty" jsonschema:"or the closing date of the statement, YYYY-MM-DD"`
+	CardLast4   string `json:"card_last4,omitempty" jsonschema:"holder's card, only when more than one card closes on that date"`
+}
+
+type GetStatementReviewOutput struct {
+	Statement      StatementOutput       `json:"statement"`
+	Review         StatementReviewOutput `json:"review"`
+	Clarifications []ClarificationOutput `json:"clarifications,omitempty" jsonschema:"open questions about this statement and its transactions"`
+	Summary        string                `json:"summary"`
+}
+
+type GetStatementLineSourceInput struct {
+	TransactionID string `json:"transaction_id,omitempty" jsonschema:"transaction whose statement lines to locate"`
+	StatementID   string `json:"statement_id,omitempty" jsonschema:"or a statement, together with index"`
+	Index         *int   `json:"index,omitempty" jsonschema:"position of the line in the reading, starting at 0"`
+}
+
+type LineSourceOutput struct {
+	StatementID   string      `json:"statement_id"`
+	Issuer        string      `json:"issuer"`
+	CardLast4     string      `json:"card_last4"`
+	ClosingDate   string      `json:"closing_date"`
+	Index         int         `json:"index"`
+	Kind          string      `json:"kind"`
+	Amount        MoneyOutput `json:"amount"`
+	Page          int         `json:"page" jsonschema:"page of Rudolfo's PDF where the line is printed"`
+	Excerpt       string      `json:"excerpt" jsonschema:"the line as printed, as you read it"`
+	TransactionID *string     `json:"transaction_id,omitempty"`
+}
+
+type GetStatementLineSourceOutput struct {
+	Sources []LineSourceOutput `json:"sources"`
+	Summary string             `json:"summary"`
 }
 
 func (o SubmitStatementExtractionOutput) reportedOutcome() Outcome {
@@ -137,6 +206,7 @@ func (s *Server) registerStatements() {
 		if err != nil {
 			return SubmitStatementExtractionOutput{}, err
 		}
+		extraction.DryRun = in.DryRun
 		submission, err := s.deps.Ledger.SubmitStatement(ctx, c.principal.AccountID, extraction, c.receivedAt, c.actor(ledger.AuthorAgent, ""))
 		if errors.Is(err, ledger.ErrStatementVersionUnsupported) {
 			return SubmitStatementExtractionOutput{}, &ToolError{Outcome: OutcomeFailed, Code: "statement_version_not_supported", Message: err.Error()}
@@ -146,6 +216,163 @@ func (s *Server) registerStatements() {
 		}
 		return statementSubmissionOutput(submission), nil
 	})
+
+	addTool(s, toolSpec{
+		name:        "get_statement_review",
+		title:       "Review a statement",
+		description: "Answers \"what is left to check on this statement?\": the composition (previous balance, purchases, installments, charges, payments and credits), the total Lastro computed from the lines against the printed total, the status and every pending item. Defaults to the latest statement.",
+		scope:       accounts.ScopeExpensesRead,
+		readOnly:    true,
+		idempotent:  true,
+	}, func(ctx context.Context, c call, in GetStatementReviewInput) (GetStatementReviewOutput, error) {
+		ref, err := statementRef(in)
+		if err != nil {
+			return GetStatementReviewOutput{}, err
+		}
+		review, err := s.deps.Ledger.StatementReview(ctx, c.principal.AccountID, ref)
+		if errors.Is(err, ledger.ErrStatementNotFound) {
+			return GetStatementReviewOutput{}, &ToolError{Outcome: OutcomeFailed, Code: "not_found", Message: err.Error()}
+		}
+		if err != nil {
+			return GetStatementReviewOutput{}, err
+		}
+		out := GetStatementReviewOutput{Statement: *statementOutput(review.Statement), Review: reviewOutput(review), Summary: reviewSummary(review)}
+		for _, clarification := range review.Clarifications {
+			out.Clarifications = append(out.Clarifications, clarificationOutput(clarification))
+		}
+		return out, nil
+	})
+
+	addTool(s, toolSpec{
+		name:        "get_statement_line_source",
+		title:       "Locate a line in the statement PDF",
+		description: "Returns the page and the excerpt you sent for a statement line, so Rudolfo can check it in his PDF. Ask by transaction (every statement line that charges it) or by statement and index.",
+		scope:       accounts.ScopeExpensesRead,
+		readOnly:    true,
+		idempotent:  true,
+	}, func(ctx context.Context, c call, in GetStatementLineSourceInput) (GetStatementLineSourceOutput, error) {
+		sources, err := s.lineSources(ctx, c, in)
+		if errors.Is(err, ledger.ErrStatementNotFound) {
+			return GetStatementLineSourceOutput{}, &ToolError{Outcome: OutcomeFailed, Code: "not_found", Message: err.Error()}
+		}
+		if err != nil {
+			return GetStatementLineSourceOutput{}, err
+		}
+		out := GetStatementLineSourceOutput{Sources: []LineSourceOutput{}}
+		for _, source := range sources {
+			out.Sources = append(out.Sources, lineSourceOutput(source))
+		}
+		switch len(out.Sources) {
+		case 0:
+			out.Summary = "Este lançamento não aparece em nenhuma fatura enviada."
+		case 1:
+			out.Summary = fmt.Sprintf("Na fatura com fechamento em %s, página %d: \"%s\".", sources[0].Statement.ClosingDate.Format(), sources[0].Page, sources[0].Excerpt)
+		default:
+			out.Summary = fmt.Sprintf("Aparece em %d linhas de fatura.", len(out.Sources))
+		}
+		return out, nil
+	})
+}
+
+func statementRef(in GetStatementReviewInput) (ledger.StatementRef, error) {
+	var ref ledger.StatementRef
+	var err error
+	if ref.StatementID, err = optionalID("statement_id", in.StatementID); err != nil {
+		return ref, err
+	}
+	if ref.ClosingDate, err = parseOptionalDate("closing_date", in.ClosingDate); err != nil {
+		return ref, err
+	}
+	ref.CardLast4 = optionalString(in.CardLast4)
+	return ref, nil
+}
+
+func (s *Server) lineSources(ctx context.Context, c call, in GetStatementLineSourceInput) ([]ledger.LineSource, error) {
+	transactionID, err := optionalID("transaction_id", in.TransactionID)
+	if err != nil {
+		return nil, err
+	}
+	if transactionID != nil {
+		return s.deps.Ledger.TransactionLineSources(ctx, c.principal.AccountID, *transactionID)
+	}
+	statementID, err := optionalID("statement_id", in.StatementID)
+	if err != nil {
+		return nil, err
+	}
+	if statementID == nil || in.Index == nil {
+		return nil, invalid("transaction_id", "send transaction_id, or statement_id with index")
+	}
+	source, err := s.deps.Ledger.StatementLineSource(ctx, c.principal.AccountID, *statementID, *in.Index+1)
+	if err != nil {
+		return nil, err
+	}
+	return []ledger.LineSource{source}, nil
+}
+
+func lineSourceOutput(source ledger.LineSource) LineSourceOutput {
+	out := LineSourceOutput{
+		StatementID: source.Statement.ID.String(),
+		Issuer:      source.Statement.Issuer,
+		CardLast4:   source.Statement.CardLast4,
+		ClosingDate: source.Statement.ClosingDate.String(),
+		Index:       source.Position - 1,
+		Kind:        string(source.Kind),
+		Amount:      moneyOutput(source.Amount),
+		Page:        source.Page,
+		Excerpt:     source.Excerpt,
+	}
+	if source.TransactionID != nil {
+		id := source.TransactionID.String()
+		out.TransactionID = &id
+	}
+	return out
+}
+
+func reviewOutput(review ledger.StatementReview) StatementReviewOutput {
+	composition := review.Composition
+	group := func(g ledger.CompositionGroup) CompositionGroupOutput {
+		return CompositionGroupOutput{Amount: moneyOutput(g.Amount), Lines: g.Lines}
+	}
+	out := StatementReviewOutput{
+		Status: string(review.Status),
+		Composition: StatementCompositionOutput{
+			Purchases:     group(composition.Purchases),
+			Installments:  group(composition.Installments),
+			Charges:       group(composition.Charges),
+			Payments:      group(composition.Payments),
+			Credits:       group(composition.Credits),
+			Adjustments:   group(composition.Adjustments),
+			Unknown:       group(composition.Unknown),
+			ComputedTotal: moneyOutput(composition.ComputedTotal),
+			InformedTotal: moneyOutput(composition.InformedTotal),
+			Difference:    moneyOutput(composition.Difference),
+		},
+	}
+	if composition.PreviousBalance != nil {
+		previous := moneyOutput(*composition.PreviousBalance)
+		out.Composition.PreviousBalance = &previous
+	}
+	for _, pending := range review.Pending {
+		out.Pending = append(out.Pending, ReviewPendingOutput{Kind: string(pending.Kind), Description: pending.Description})
+	}
+	return out
+}
+
+func reviewSummary(review ledger.StatementReview) string {
+	statement, composition := review.Statement, review.Composition
+	head := fmt.Sprintf("Fatura %s final %s, fechamento %s: ", statement.Issuer, statement.CardLast4, statement.ClosingDate.Format())
+	switch review.Status {
+	case ledger.ReviewReconciled:
+		head += fmt.Sprintf("conferida. O total calculado a partir dos itens (%s) explica o total da fatura. Conferida não quer dizer paga.", composition.ComputedTotal.Format())
+	case ledger.ReviewDivergent:
+		head += fmt.Sprintf("não confere. Total da fatura %s, total calculado %s, diferença de %s.", composition.InformedTotal.Format(), composition.ComputedTotal.Format(), composition.Difference.Format())
+	default:
+		head += fmt.Sprintf("leitura incompleta, ainda não pode ser dada como conferida. Total da fatura %s, total calculado %s.", composition.InformedTotal.Format(), composition.ComputedTotal.Format())
+	}
+	if len(review.Pending) > 0 {
+		head += fmt.Sprintf(" %d pendência(s).", len(review.Pending))
+	}
+	return head
 }
 
 func stringValues(values []string) []any {
@@ -317,8 +544,12 @@ func statementSubmissionOutput(submission ledger.StatementSubmission) SubmitStat
 		}
 		out.Candidates = append(out.Candidates, candidates)
 	}
-	for _, clarification := range submission.Clarifications {
-		out.Clarifications = append(out.Clarifications, clarificationOutput(clarification))
+	if review := submission.Review; review != nil {
+		reviewed := reviewOutput(*review)
+		out.Review = &reviewed
+		for _, clarification := range review.Clarifications {
+			out.Clarifications = append(out.Clarifications, clarificationOutput(clarification))
+		}
 	}
 	if submission.Result == ledger.StatementPossibleMatch {
 		out.Outcome = OutcomePending
@@ -375,21 +606,19 @@ func statementSummary(submission ledger.StatementSubmission) string {
 	case ledger.StatementPossibleMatch:
 		return fmt.Sprintf("Nada foi registrado: %d item(ns) podem ser cobranças já registradas pela conversa ou por notificação. Para cada um, envie de novo a leitura inteira com related_transaction_id (mesma compra) ou confirm_distinct (outra compra); pergunte a Rudolfo se não tiver certeza.", len(submission.Candidates))
 	case ledger.StatementAlreadyRecorded:
-		return "Esta leitura da fatura já estava registrada; nada mudou."
+		return "Esta leitura da fatura já estava registrada; nada mudou. " + reviewSummary(*submission.Review)
 	}
 	statement := submission.Statement
 	counts := map[ledger.InterpretationEffect]int{}
 	for _, line := range submission.Lines {
 		counts[line.Effect]++
 	}
-	summary := fmt.Sprintf("Registrei a fatura %s final %s (fechamento %s, vencimento %s, total %s): %d itens, %d lançamento(s) novo(s), %d conferido(s) com registros existentes e %d só na fatura.",
+	verb := "Registrei"
+	if submission.Result == ledger.StatementPreviewed {
+		verb = "Simulação, nada foi gravado. Eu registraria"
+	}
+	summary := fmt.Sprintf("%s a fatura %s final %s (fechamento %s, vencimento %s, total %s): %d itens, %d lançamento(s) novo(s), %d conferido(s) com registros existentes e %d só na fatura.", verb,
 		statement.Issuer, statement.CardLast4, statement.ClosingDate.Format(), statement.Version.DueDate.Format(), statement.Version.Total.Format(),
 		len(submission.Lines), counts[ledger.EffectCreated], counts[ledger.EffectLinked], counts[ledger.EffectNone])
-	if statement.Version.Reading == ledger.ReadingPartial {
-		summary += " A leitura está incompleta: " + *statement.Version.Missing
-	}
-	if len(submission.Clarifications) > 0 {
-		summary += fmt.Sprintf(" Há %d dúvida(s) de leitura para Rudolfo.", len(submission.Clarifications))
-	}
-	return summary
+	return summary + " " + reviewSummary(*submission.Review)
 }

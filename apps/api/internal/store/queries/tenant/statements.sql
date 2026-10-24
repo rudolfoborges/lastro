@@ -75,3 +75,59 @@ LIMIT 5;
 SELECT *
 FROM statement_versions
 WHERE account_id = @account_id AND id = @id;
+
+-- name: StatementLineTotals :many
+SELECT kind, direction, count(*)::int AS lines, sum(amount_minor)::bigint AS amount_minor
+FROM statement_lines
+WHERE account_id = @account_id AND statement_version_id = @statement_version_id
+GROUP BY kind, direction
+ORDER BY kind, direction;
+
+-- name: OpenStatementReviewClarifications :many
+SELECT c.*
+FROM clarifications c
+WHERE c.account_id = @account_id
+  AND c.status = 'open'
+  AND (
+      c.statement_id = @statement_id
+      OR c.transaction_id IN (
+          SELECT e.transaction_id
+          FROM statement_lines l
+          JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+          WHERE l.account_id = @account_id AND l.statement_version_id = @statement_version_id
+      )
+  )
+ORDER BY c.created_at, c.id;
+
+-- name: LatestStatement :one
+SELECT *
+FROM statements
+WHERE account_id = @account_id
+ORDER BY closing_date DESC, created_at DESC
+LIMIT 1;
+
+-- name: FindStatementsByClosingDate :many
+SELECT *
+FROM statements
+WHERE account_id = @account_id
+  AND closing_date = @closing_date
+  AND (sqlc.narg(card_last4)::text IS NULL OR card_last4 = sqlc.narg(card_last4)::text)
+ORDER BY created_at
+LIMIT 5;
+
+-- name: StatementLineAt :one
+SELECT l.*, e.transaction_id
+FROM statement_lines l
+LEFT JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+WHERE l.account_id = @account_id AND l.statement_version_id = @statement_version_id AND l.position = @position;
+
+-- name: TransactionStatementLines :many
+SELECT l.*, v.statement_id, v.version
+FROM transaction_evidence e
+JOIN statement_lines l ON l.account_id = e.account_id AND l.observation_id = e.observation_id
+JOIN statement_versions v ON v.account_id = l.account_id AND v.id = l.statement_version_id
+WHERE e.account_id = @account_id
+  AND e.transaction_id = @transaction_id
+  AND e.status = 'confirmed'
+  AND v.version = (SELECT max(latest.version) FROM statement_versions latest WHERE latest.account_id = v.account_id AND latest.statement_id = v.statement_id)
+ORDER BY v.created_at, l.position;

@@ -9,11 +9,12 @@ import (
 )
 
 type ListClarificationsInput struct {
-	Kind   string `json:"kind,omitempty" jsonschema:"only clarifications of this kind; category_unknown answers which expenses have no category"`
-	Status string `json:"status,omitempty" jsonschema:"open (default), resolved or dismissed"`
-	From   string `json:"from,omitempty" jsonschema:"first purchase date to include, YYYY-MM-DD"`
-	To     string `json:"to,omitempty" jsonschema:"last purchase date to include, YYYY-MM-DD"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of clarifications, up to 200 (default 50)"`
+	Kind        string `json:"kind,omitempty" jsonschema:"only clarifications of this kind; category_unknown answers which expenses have no category"`
+	Status      string `json:"status,omitempty" jsonschema:"open (default), resolved or dismissed"`
+	From        string `json:"from,omitempty" jsonschema:"first purchase date to include, YYYY-MM-DD"`
+	To          string `json:"to,omitempty" jsonschema:"last purchase date to include, YYYY-MM-DD"`
+	StatementID string `json:"statement_id,omitempty" jsonschema:"only questions about this statement and the transactions of its lines"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"maximum number of clarifications, up to 200 (default 50)"`
 }
 
 type ListClarificationsOutput struct {
@@ -47,7 +48,7 @@ func (s *Server) registerClarifications() {
 	addTool(s, toolSpec{
 		name:        "list_clarifications",
 		title:       "List pending questions",
-		description: "Lists the questions Lastro has for Rudolfo, such as expenses without category, Pix without purpose and conflicts with what he confirmed, each with description, date and amount. Filter by kind, status and purchase period.",
+		description: "Lists the questions Lastro has for Rudolfo, such as expenses without category, Pix without purpose, conflicts with what he confirmed and doubts about a statement, each with description, date and amount. Filter by kind, status, purchase period and statement.",
 		scope:       accounts.ScopeExpensesRead,
 		readOnly:    true,
 		idempotent:  true,
@@ -65,6 +66,9 @@ func (s *Server) registerClarifications() {
 			return ListClarificationsOutput{}, err
 		}
 		filter := ledger.ClarificationFilter{Status: ledger.ClarificationStatus(in.Status), From: from, To: to, Limit: in.Limit}
+		if filter.StatementID, err = optionalID("statement_id", in.StatementID); err != nil {
+			return ListClarificationsOutput{}, err
+		}
 		if in.Kind != "" {
 			filter.Kinds = []ledger.ClarificationKind{ledger.ClarificationKind(in.Kind)}
 		}
