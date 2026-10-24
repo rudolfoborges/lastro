@@ -4,7 +4,7 @@ Case is Rudolfo's AI assistant and runs on ChatGPT. Case talks to Rudolfo, under
 
 ## Connection
 
-> **Temporary URL.** Until the certificate of `lastro.code04.dev` is issued, Lastro is served and announces itself (`PUBLIC_BASE_URL`, the OAuth issuer) at `https://api-production-9ee63.up.railway.app`. Switching back to `lastro.code04.dev` means changing `PUBLIC_BASE_URL` in `.railway/railway.ts`, applying it, and in ChatGPT changing the app's URL and authorizing again: tokens are bound to the old address and stop working.
+> **URL.** Lastro is served and announces itself (`PUBLIC_BASE_URL`, the OAuth issuer) at the Railway domain `https://api-production-9ee63.up.railway.app`. The custom domain `lastro.code04.dev` is parked (#83). Moving to a custom domain later means changing `PUBLIC_BASE_URL` in `.railway/railway.ts`, applying it, and in ChatGPT changing the app's URL and authorizing again: tokens are bound to the old address and stop working.
 
 | Item | Value |
 | --- | --- |

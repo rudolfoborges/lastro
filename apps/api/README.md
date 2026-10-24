@@ -67,7 +67,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `RATE_LIMIT_PER_MINUTE` | no | `120` | Requests per minute for each API key |
 | `UNAUTHENTICATED_RATE_LIMIT_PER_MINUTE` | no | `10` | Sign-ups and failed authentications per minute for each client IP |
 | `TRUST_PROXY_HEADERS` | no | `false` | Read the client IP from `X-Real-IP`/`X-Forwarded-For`; enable only behind a proxy that overwrites them |
-| `PUBLIC_BASE_URL` | in production | `http://localhost:$PORT` | Public origin (`https://lastro.code04.dev`): the OAuth issuer, and `$PUBLIC_BASE_URL/mcp` is the resource tokens are bound to |
+| `PUBLIC_BASE_URL` | in production | `http://localhost:$PORT` | Public origin (in production, the Railway domain `https://api-production-9ee63.up.railway.app`): the OAuth issuer, and `$PUBLIC_BASE_URL/mcp` is the resource tokens are bound to |
 | `OAUTH_REDIRECT_HOSTS` | no | `chatgpt.com` | Hosts OAuth clients may redirect to (HTTPS only; `localhost` is also accepted outside production) |
 | `OAUTH_METADATA_HOSTS` | no | `chatgpt.com` | Hosts allowed to serve client ID metadata documents (CIMD) |
 | `OAUTH_DYNAMIC_REGISTRATION` | no | `false` | Serves dynamic client registration (`/oauth/register`) and advertises it in the metadata; ChatGPT uses CIMD instead |
