@@ -8,13 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/money"
 )
 
-var clearableFields = []any{"merchant", "payee", "payment_method", "purpose", "installments", "date"}
+var clearableFields = []any{"merchant", "payee", "payment_method", "purpose", "installments", "date", "refund_of"}
 
 type UpdateTransactionInput struct {
 	TransactionID     string   `json:"transaction_id"`
@@ -35,6 +37,7 @@ type UpdateTransactionInput struct {
 	Purpose           string   `json:"purpose,omitempty"`
 	InstallmentCount  int      `json:"installment_count,omitempty"`
 	InstallmentAmount string   `json:"installment_amount,omitempty"`
+	RefundOfID        string   `json:"refund_of_id,omitempty" jsonschema:"for a refund: the purchase it returns money from; send nature refund too when it was recorded as an expense"`
 	Clear             []string `json:"clear,omitempty" jsonschema:"fields Rudolfo said are not known after all"`
 }
 
@@ -117,6 +120,9 @@ type InstallmentPlanOutput struct {
 
 type TransactionDetailOutput struct {
 	Transaction     TransactionOutput      `json:"transaction"`
+	Refunds         []TransactionOutput    `json:"refunds,omitempty" jsonschema:"refunds of this purchase, total or partial, each kept as its own transaction"`
+	Refunded        *MoneyOutput           `json:"refunded,omitempty" jsonschema:"sum of the refunds"`
+	Net             *MoneyOutput           `json:"net,omitempty" jsonschema:"the purchase minus its refunds, in the purchase currency"`
 	InstallmentPlan *InstallmentPlanOutput `json:"installment_plan,omitempty" jsonschema:"for purchases in installments: what was charged and what is still to come"`
 	Evidence        []EvidenceOutput       `json:"evidence"`
 	History         []RevisionOutput       `json:"history" jsonschema:"every change, oldest first"`
@@ -371,6 +377,16 @@ func (s *Server) patchFrom(ctx context.Context, c call, in UpdateTransactionInpu
 	case cleared("installments"):
 		patch.Installments = ledger.Cleared[ledger.Installments]()
 	}
+	switch {
+	case strings.TrimSpace(in.RefundOfID) != "":
+		purchase, err := parseID("refund_of_id", in.RefundOfID)
+		if err != nil {
+			return patch, err
+		}
+		patch.RefundOf = ledger.Value(purchase)
+	case cleared("refund_of"):
+		patch.RefundOf = ledger.Cleared[uuid.UUID]()
+	}
 	if emptyPatch(patch) {
 		return patch, invalid("transaction_id", "the call changes nothing: send at least one field to correct")
 	}
@@ -437,7 +453,7 @@ func optionalField(value string, cleared bool) ledger.Optional[string] {
 
 func emptyPatch(p ledger.Patch) bool {
 	return p.Description == nil && !p.Merchant.Set && !p.Payee.Set && p.Amount == nil && p.Occurred == nil &&
-		!p.PaymentMethod.Set && p.Nature == nil && !p.Purpose.Set && !p.Installments.Set
+		!p.PaymentMethod.Set && p.Nature == nil && !p.Purpose.Set && !p.Installments.Set && !p.RefundOf.Set
 }
 
 func correctionSummary(correction ledger.Correction) string {
@@ -494,6 +510,13 @@ func detailOutput(detail ledger.TransactionDetail) TransactionDetailOutput {
 	}
 	if detail.Plan != nil {
 		out.InstallmentPlan = planOutput(*detail.Plan)
+	}
+	if len(detail.Refunds) > 0 {
+		refunded, net := moneyOutput(detail.Refunded), moneyOutput(detail.Net())
+		out.Refunded, out.Net = &refunded, &net
+		for _, refund := range detail.Refunds {
+			out.Refunds = append(out.Refunds, transactionOutput(refund, nil))
+		}
 	}
 	return out
 }

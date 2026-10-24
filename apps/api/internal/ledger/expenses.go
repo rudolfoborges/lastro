@@ -64,6 +64,8 @@ type ExpenseReport struct {
 	CategoryStatus       AllocationStatus
 	Purpose              *string
 	Installments         *Installments
+	Nature               Nature
+	RefundOfID           *uuid.UUID
 	RelatedTransactionID *uuid.UUID
 	ConfirmDistinct      bool
 	DeferMatch           bool
@@ -190,8 +192,12 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 	if report.Purpose != nil {
 		details["purpose"] = *report.Purpose
 	}
+	event := EventPurchase
+	if report.Nature == NatureRefund {
+		event = EventRefund
+	}
 	_, err = t.recordInterpretation(observation.ID, Interpretation{
-		EventType:     EventPurchase,
+		EventType:     event,
 		Amount:        report.Amount,
 		Merchant:      report.Merchant,
 		Occurred:      occurred,
@@ -206,8 +212,22 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 	if report.RelatedTransactionID != nil {
 		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, loc, actor)
 	}
+	var purchase *Transaction
+	if report.RefundOfID != nil {
+		refunded, err := t.refundable(*report.RefundOfID, *report.Amount, "refund_of_id")
+		if err != nil {
+			return recordedExpense{}, err
+		}
+		purchase = &refunded
+		if report.Merchant == nil {
+			report.Merchant = refunded.Merchant
+		}
+	}
 	description := report.Description
-	if description == "" {
+	switch {
+	case description == "" && report.Nature == NatureRefund:
+		description = refundDescription(purchase, report.Merchant)
+	case description == "":
 		description = *report.Merchant
 	}
 	created, err := t.createTransaction(observation.ID, NewTransaction{
@@ -217,13 +237,23 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		Amount:              *report.Amount,
 		Occurred:            occurred,
 		PaymentMethod:       report.PaymentMethod,
-		Nature:              NatureExpense,
+		Nature:              report.Nature,
 		Status:              InitialStatus(report.PaymentMethod),
 		Purpose:             report.Purpose,
 		Installments:        report.Installments,
+		RefundOfID:          report.RefundOfID,
 	}, actor)
 	if err != nil {
 		return recordedExpense{}, err
+	}
+	if report.Category == nil && purchase != nil {
+		current, err := t.currentCategory(purchase.ID)
+		if err != nil {
+			return recordedExpense{}, err
+		}
+		if current != nil {
+			report.Category, report.CategoryStatus = &current.Code, AllocationSuggested
+		}
 	}
 	if err := t.categorizeReport(created, report, actor, false); err != nil {
 		return recordedExpense{}, err
@@ -276,7 +306,7 @@ func (t *tx) checkRepetition(report ExpenseReport, fingerprint []byte, loc *time
 
 func conversationProbe(report ExpenseReport, occurred calendar.Occurrence, loc *time.Location) matchProbe {
 	probe := matchProbe{
-		nature:          NatureExpense,
+		nature:          report.Nature,
 		amount:          *report.Amount,
 		merchant:        report.Merchant,
 		occurred:        occurred,
@@ -299,8 +329,8 @@ func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseRe
 	case err != nil:
 		return recordedExpense{}, err
 	}
-	if current.Nature != NatureExpense {
-		return recordedExpense{}, &ValidationError{Field: "related_transaction_id", Message: "must be a purchase (nature expense)"}
+	if current.Nature != report.Nature {
+		return recordedExpense{}, &ValidationError{Field: "related_transaction_id", Message: fmt.Sprintf("must be a transaction of nature %s, like what Rudolfo told", report.Nature)}
 	}
 	if err := t.assertDistinctSources(transactionID, observationID, SourceConversation); err != nil {
 		return recordedExpense{}, err
@@ -483,6 +513,17 @@ func normalizeReport(report ExpenseReport) (ExpenseReport, error) {
 	if report.RelatedTransactionID != nil && report.ConfirmDistinct {
 		return report, &ValidationError{Field: "confirm_distinct", Message: "cannot be sent with related_transaction_id"}
 	}
+	if report.Nature == "" {
+		report.Nature = NatureExpense
+	}
+	switch {
+	case report.Nature != NatureExpense && report.Nature != NatureRefund:
+		return report, &ValidationError{Field: "nature", Message: "must be expense or refund; other movements come from the statement"}
+	case report.RefundOfID != nil && report.Nature != NatureRefund:
+		return report, &ValidationError{Field: "refund_of_id", Message: "applies only to nature refund"}
+	case report.Nature == NatureRefund && report.Installments != nil:
+		return report, &ValidationError{Field: "installment_count", Message: "does not apply to a refund"}
+	}
 	if report.DeferMatch && (report.RelatedTransactionID != nil || report.ConfirmDistinct) {
 		return report, &ValidationError{Field: "defer_match", Message: "is for when you cannot decide; leave it out with related_transaction_id or confirm_distinct"}
 	}
@@ -493,7 +534,7 @@ func missingIdentity(report ExpenseReport) string {
 	switch {
 	case report.Amount == nil:
 		return "Qual foi o valor?"
-	case report.Description == "" && report.Merchant == nil:
+	case report.Description == "" && report.Merchant == nil && report.RefundOfID == nil:
 		return "O que foi comprado, ou onde?"
 	default:
 		return ""

@@ -91,3 +91,15 @@ LIMIT @max_rows OFFSET @skip_rows;
 SELECT *
 FROM payment_methods
 WHERE account_id = @account_id;
+
+-- name: SetRefundOf :one
+UPDATE transactions
+SET refund_of_id = sqlc.narg(refund_of_id), updated_at = now()
+WHERE account_id = @account_id AND id = @id
+RETURNING *;
+
+-- name: ListRefundsOf :many
+SELECT *
+FROM transactions
+WHERE account_id = @account_id AND refund_of_id = @refund_of_id AND status NOT IN ('voided', 'merged')
+ORDER BY occurred_on NULLS LAST, created_at, id;

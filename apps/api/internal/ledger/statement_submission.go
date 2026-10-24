@@ -466,8 +466,12 @@ func (s *statementSubmitter) linkWith(observationID uuid.UUID, item StatementIte
 
 func (s *statementSubmitter) gapPatch(current Transaction, item StatementItem) Patch {
 	var patch Patch
-	if !item.Kind.installment() && current.Amount.Currency == item.Amount.Currency && current.Amount.Minor != item.Amount.Minor {
+	switch {
+	case item.Kind.installment():
+	case current.Amount.Currency == item.Amount.Currency && current.Amount.Minor != item.Amount.Minor:
 		patch.Amount = &item.Amount
+	case current.Amount.Currency != item.Amount.Currency && item.OriginalAmount != nil && *item.OriginalAmount == current.Amount:
+		patch.Amount, patch.OriginalAmount = &item.Amount, Value(*item.OriginalAmount)
 	}
 	if current.Merchant == nil && item.Merchant != nil {
 		patch.Merchant = Value(*item.Merchant)

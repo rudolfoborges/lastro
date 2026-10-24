@@ -134,6 +134,7 @@ const (
 	FieldNature        Field = "nature"
 	FieldPurpose       Field = "purpose"
 	FieldInstallments  Field = "installments"
+	FieldRefundOf      Field = "refund_of"
 )
 
 type PaymentMethodRef struct {

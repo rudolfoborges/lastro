@@ -30,6 +30,14 @@ type TransactionDetail struct {
 	History        []Revision
 	Clarifications []Clarification
 	Plan           *InstallmentPlan
+	Refunds        []Transaction
+	Refunded       money.Money
+}
+
+// Net is what a purchase cost after its refunds; refunds are always in the
+// currency of the purchase, so the subtraction never mixes currencies.
+func (d TransactionDetail) Net() money.Money {
+	return money.Money{Minor: d.Amount.Minor - d.Refunded.Minor, Currency: d.Amount.Currency}
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
@@ -162,6 +170,10 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 	if err != nil {
 		return TransactionDetail{}, err
 	}
+	refunds, refunded, err := t.refundsOf(transaction)
+	if err != nil {
+		return TransactionDetail{}, err
+	}
 	return TransactionDetail{
 		Transaction:    transaction,
 		Category:       EffectiveCategory(transaction, category),
@@ -170,7 +182,27 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 		History:        history,
 		Clarifications: clarifications,
 		Plan:           plan,
+		Refunds:        refunds,
+		Refunded:       refunded,
 	}, nil
+}
+
+func (t *tx) refundsOf(purchase Transaction) ([]Transaction, money.Money, error) {
+	refunded := money.Money{Currency: purchase.Amount.Currency}
+	rows, err := t.q.ListRefundsOf(t.ctx, tenantdb.ListRefundsOfParams{AccountID: t.accountID, RefundOfID: &purchase.ID})
+	if err != nil {
+		return nil, refunded, fmt.Errorf("list refunds: %w", err)
+	}
+	refunds := make([]Transaction, 0, len(rows))
+	for _, row := range rows {
+		refund, err := t.withPaymentMethod(row)
+		if err != nil {
+			return nil, refunded, err
+		}
+		refunds = append(refunds, refund)
+		refunded.Minor += refund.Amount.Minor
+	}
+	return refunds, refunded, nil
 }
 
 func (t *tx) transaction(id uuid.UUID) (Transaction, error) {

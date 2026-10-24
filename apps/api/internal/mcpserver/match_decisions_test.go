@@ -85,3 +85,22 @@ func TestCaseSeesTheInstallmentPlanOfAPurchase(t *testing.T) {
 		t.Errorf("plan = %+v, transaction = %+v", plan, got.out.Transaction)
 	}
 }
+
+func TestCaseRecordsARefundAndSeesTheNet(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write"))
+	bought := supermarket("message-1")
+	bought["amount"], bought["raw_text"], bought["payment_method"] = "100.00", "Luminária de 100 no débito", "debit_card"
+	purchase := callTool[mcpserver.RecordExpenseOutput](t, session, "record_expense", bought, chatgpt).out.Transaction
+	refund := map[string]any{"request_id": "message-2", "raw_text": "A loja devolveu 30", "amount": "30.00", "nature": "refund", "refund_of_id": purchase.ID, "payment_method": "debit_card"}
+
+	recorded := callTool[mcpserver.RecordExpenseOutput](t, session, "record_expense", refund, chatgpt)
+	detail := callTool[mcpserver.TransactionDetailOutput](t, session, "get_transaction", map[string]any{"transaction_id": purchase.ID}, nil)
+
+	if recorded.isError || recorded.out.Transaction.Nature != "refund" || recorded.out.Transaction.RefundOf == nil {
+		t.Fatalf("record_expense(refund) = %+v (%s)", recorded.out, recorded.text)
+	}
+	if detail.out.Net == nil || detail.out.Net.Amount != "70.00" || detail.out.Refunded.Amount != "30.00" || len(detail.out.Refunds) != 1 {
+		t.Errorf("get_transaction = %+v", detail.out)
+	}
+}

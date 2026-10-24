@@ -61,5 +61,6 @@ Each item comes back with `outcome` and `result`:
 ## Never
 
 - Never treat `removed: true` as a cancellation: Rudolfo only dismissed it on the phone.
+- A `declined` payment never changes a transaction. If Rudolfo told you about that purchase in the conversation and it was declined, ask him whether it went through later; void the record only if it did not.
 - Never record a notification through `record_expense`; it would count the purchase twice.
 - Never add up amounts yourself.
