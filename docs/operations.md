@@ -51,6 +51,17 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
 
    Then sign up with the code through `POST /v1/accounts` (see `apps/api/README.md`) and keep the returned `admin` token in a password manager.
 
+## Lost admin key
+
+Tokens are stored only as hashes, so a lost key cannot be recovered; the operator issues a new one. Run the commands in your own terminal, so the token is never pasted anywhere else:
+
+```bash
+railway ssh --service api lastro accounts list
+railway ssh --service api lastro keys create --account <account-id> --name admin --scopes admin
+```
+
+Keep the new token in the password manager. Then list the keys with it (`GET /v1/api-keys`) and revoke the lost one (`POST /v1/api-keys/{id}/revoke`). Case's OAuth authorization in ChatGPT does not depend on the admin key and keeps working.
+
 ## Deploys
 
 Deploys are triggered by the `deploy` job of the CI workflow, not by a Railway GitHub trigger. On a push to `main` that changes `apps/api`, the job waits for the `ci` job to pass and asks Railway, with `RAILWAY_TOKEN`, to deploy that exact commit (`.github/scripts/railway-deploy.sh`). Railway builds the image, runs `lastro migrate up` in a pre-deploy container, waits for `/readyz` and only then moves traffic; the job fails when the deployment fails.

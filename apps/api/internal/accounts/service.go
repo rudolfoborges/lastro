@@ -264,6 +264,19 @@ func (s *Service) SetTimezone(ctx context.Context, accountID uuid.UUID, timezone
 	return account, err
 }
 
+// ListAccounts runs without a tenant, so it is reserved for operator commands.
+func (s *Service) ListAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := s.store.Platform().ListAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list accounts: %w", err)
+	}
+	accounts := make([]Account, len(rows))
+	for i, row := range rows {
+		accounts[i] = fromPlatformAccount(row)
+	}
+	return accounts, nil
+}
+
 func (s *Service) ListKeys(ctx context.Context, accountID uuid.UUID) ([]APIKey, error) {
 	var keys []APIKey
 	err := s.store.TenantTx(ctx, accountID, func(q *tenantdb.Queries) error {
