@@ -220,3 +220,5 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] Sending the October statement PDF again answers `already_recorded` and gives each installment line its purchase and plan; "quanto falta pagar do sofá?" is answered from `get_transaction` (`installment_plan.remaining`), estimated and with the date of the information.
 - [ ] "Comprei uma TV de 1.200 em 12x de 100" records R$ 1.200,00 with a plan of 12 known installments; the next statement links its 01/12 line to it and the remaining commitment becomes R$ 1.100,00.
 - [ ] The next statement chains each "n/N" line of October's plans by itself (`linked`) and asks only when two plans could take the same installment.
+- [ ] A Pix parcelado without purpose shows up in "quais dúvidas eu tenho?" with the question about goods, transfer or refinancing; answering it does not change the statement total.
+- [ ] "Quanto do Pix parcelado é juros?" is answered from the plan's `breakdown` when the statement details it; otherwise Case says the composition was not informed.

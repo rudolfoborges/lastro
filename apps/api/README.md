@@ -310,7 +310,18 @@ A purchase in installments has one row in `installment_plans` (#40): modality (`
 - **Corrections:** Rudolfo's amount on an `installment`-basis purchase becomes its total (`amount_basis` back to `total`) and the plan's total. Changing the count is refused below the last charged installment, and clearing it is refused once a statement charged one.
 - **Merges** carry the plan to the survivor, or fill the survivor's plan (total, known installment amount; the same count is required) and cancel the merged one; `undo_match` restores both.
 - **Earlier statements:** installment lines recorded before plans existed get their purchase and plan when the same reading is sent again (`already_recorded`), or when a new version keeps them.
-- `get_transaction` returns the plan with each installment (`charged`, `known_future`, `estimated`), the charged amount and the remaining commitment.
+- `get_transaction` returns the plan with each installment (`charged`, `known_future`, `estimated`), the charged amount, its breakdown and the remaining commitment.
+
+### Charge components and Pix installments
+
+The principal, interest, IOF and fee Case reads on a statement line are stored in `charge_components` (#41), one row per line and kind, with `included` telling whether the value is inside the line amount or charged in another line. Migration 00021 copied the components of lines read before the table existed.
+
+- **No double counting:** the statement total is computed from the lines only. Included components explain a line and are never added to it, so an installment of R$ 500,00 with R$ 50,00 of interest counts R$ 500,00. A component charged apart is informative: its own line counts once.
+- **Where it shows:**
+  - the review's composition adds `included_charges`, the interest, IOF and fees inside installments, as a breakdown of `installments`;
+  - a plan sums the included components of its charged installments (`breakdown`) and counts the charged installments without detail.
+- **Missing breakdown:** a Pix installment charged without included components opens one `missing_breakdown` question per plan, on its purchase, never one per cycle. It closes when a later statement details an installment.
+- **Purpose:** a Pix installment purchase without purpose opens `purpose_unknown`, asking whether it paid for goods or services, a transfer or a refinancing. Answering never changes the statement total. The modality stays in the plan, apart from category and purpose.
 
 ### Matching sources
 

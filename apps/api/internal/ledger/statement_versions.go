@@ -230,6 +230,9 @@ func (s *statementSubmitter) recordVersionLine(statement tenantdb.Statement, ver
 		if err != nil {
 			return StatementLine{}, err
 		}
+		if err := s.recordComponents(statement.ID, observation.ID, item); err != nil {
+			return StatementLine{}, err
+		}
 		line, err := s.moveEvidence(*prior, observation.ID, item)
 		if err != nil {
 			return StatementLine{}, err

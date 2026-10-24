@@ -50,6 +50,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | parcela cobrada / futura conhecida / estimada; valor conhecido só da parcela | `installment` `state`: `charged` / `known_future` / `estimated`; `amount_basis`: `installment` / `total` |
 | compromissos futuros | `future_commitments` |
 | principal, juros, IOF, tarifa | `principal`, `interest`, `iof`, `fee` |
+| componente da cobrança (contido na parcela ou cobrado à parte) / composição não informada | `charge_component` (`included`) / `missing_breakdown` |
 | dúvida | `clarification` |
 | regra de classificação | `classification_rule` |
 | histórico de alterações | `revision` |

@@ -228,11 +228,33 @@ func (s *statementSubmitter) record(statement tenantdb.Statement, version tenant
 	if err != nil {
 		return StatementLine{}, err
 	}
+	if err := s.recordComponents(statement.ID, observation.ID, item); err != nil {
+		return StatementLine{}, err
+	}
 	line, err := s.apply(statement, observation.ID, item)
 	if err != nil {
 		return StatementLine{}, err
 	}
 	return s.insertLine(version, index, observation.ID, item, line)
+}
+
+func (s *statementSubmitter) recordComponents(statementID, observationID uuid.UUID, item StatementItem) error {
+	for _, component := range item.Components {
+		err := s.t.q.InsertChargeComponent(s.t.ctx, tenantdb.InsertChargeComponentParams{
+			ID:            store.NewID(),
+			AccountID:     s.t.accountID,
+			ObservationID: observationID,
+			StatementID:   statementID,
+			Kind:          string(component.Kind),
+			AmountMinor:   component.Amount.Minor,
+			Currency:      component.Amount.Currency,
+			Included:      component.Included,
+		})
+		if err != nil {
+			return fmt.Errorf("record charge component: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *statementSubmitter) insertLine(version tenantdb.StatementVersion, index int, observationID uuid.UUID, item StatementItem, line StatementLine) (StatementLine, error) {

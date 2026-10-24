@@ -66,8 +66,8 @@ func TestCaseSubmitsAStatementReadingWithEveryLineAnchored(t *testing.T) {
 	if st := first.out.Statement; st == nil || st.Total.Amount != "957.45" || st.PreviousBalance.Amount != "1500.00" || st.Version != 1 {
 		t.Errorf("statement = %+v", first.out.Statement)
 	}
-	if len(first.out.Clarifications) != 3 {
-		t.Errorf("clarifications = %+v, want the reading doubt, the unknown line and the category of the Pix installment", first.out.Clarifications)
+	if len(first.out.Clarifications) != 4 {
+		t.Errorf("clarifications = %+v, want the reading doubt, the unknown line and the category and purpose of the Pix installment", first.out.Clarifications)
 	}
 	transactions := e.count("transactions")
 
@@ -103,7 +103,7 @@ func TestCaseReviewsWhatIsLeftToCheckOnTheLatestStatement(t *testing.T) {
 		t.Errorf("submission review = %+v", submitted.out.Review)
 	}
 	listed := callTool[mcpserver.ListClarificationsOutput](t, session, "list_clarifications", map[string]any{"statement_id": submitted.out.Statement.ID}, nil)
-	if listed.isError || listed.out.Count != 3 {
+	if listed.isError || listed.out.Count != 4 {
 		t.Errorf("clarifications of the statement = %+v %s", listed.out, listed.text)
 	}
 }

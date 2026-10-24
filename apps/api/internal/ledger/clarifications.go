@@ -309,6 +309,18 @@ func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 			question:      fmt.Sprintf("Qual a finalidade do Pix %s?", describe(transaction)),
 		})
 	}
+	plan, err := t.planRow(transactionID)
+	if err != nil {
+		return err
+	}
+	if plan != nil && plan.PaymentModality == string(ModalityPixInstallment) && transaction.Purpose == nil && transaction.Nature == NatureExpense {
+		return t.openClarification(newClarification{
+			kind:          ClarificationPurposeUnknown,
+			transactionID: &transactionID,
+			subject:       subjectTransaction,
+			question:      fmt.Sprintf("Qual a finalidade do Pix parcelado %s? Foi pagamento de bens ou serviços, transferência ou refinanciamento?", describe(transaction)),
+		})
+	}
 	return t.closeTransactionClarifications(transactionID, []ClarificationKind{ClarificationPurposeUnknown}, ClarificationResolved, "Finalidade informada ou não se aplica mais.")
 }
 

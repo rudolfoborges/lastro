@@ -39,6 +39,7 @@ type StatementComposition struct {
 	Credits         CompositionGroup
 	Adjustments     CompositionGroup
 	Unknown         CompositionGroup
+	IncludedCharges CompositionGroup
 	ComputedTotal   money.Money
 	InformedTotal   money.Money
 	Difference      money.Money
@@ -258,7 +259,7 @@ func (t *tx) composition(version tenantdb.StatementVersion) (StatementCompositio
 	currency := version.Currency
 	zero := func() CompositionGroup { return CompositionGroup{Amount: money.Money{Currency: currency}} }
 	out := StatementComposition{
-		Purchases: zero(), Installments: zero(), Charges: zero(), Payments: zero(), Credits: zero(), Adjustments: zero(), Unknown: zero(),
+		Purchases: zero(), Installments: zero(), Charges: zero(), Payments: zero(), Credits: zero(), Adjustments: zero(), Unknown: zero(), IncludedCharges: zero(),
 		InformedTotal: money.Money{Minor: version.InformedTotalMinor, Currency: currency},
 	}
 	computed := int64(0)
@@ -284,6 +285,11 @@ func (t *tx) composition(version tenantdb.StatementVersion) (StatementCompositio
 			group.Amount.Minor += row.AmountMinor
 		}
 	}
+	included, err := t.q.StatementIncludedCharges(t.ctx, tenantdb.StatementIncludedChargesParams{AccountID: t.accountID, StatementVersionID: version.ID})
+	if err != nil {
+		return StatementComposition{}, fmt.Errorf("charges inside installments: %w", err)
+	}
+	out.IncludedCharges = CompositionGroup{Amount: money.Money{Minor: included.AmountMinor, Currency: currency}, Lines: int(included.Lines)}
 	out.ComputedTotal = money.Money{Minor: computed, Currency: currency}
 	out.Difference = money.Money{Minor: version.InformedTotalMinor - computed, Currency: currency}
 	return out, nil

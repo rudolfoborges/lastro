@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,8 @@ import (
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/tenantdb"
 )
+
+const subjectBreakdown = "breakdown"
 
 type PaymentModality string
 
@@ -38,6 +41,11 @@ type Installment struct {
 	InformedOn  calendar.Date
 }
 
+type ComponentTotal struct {
+	Kind   ComponentKind
+	Amount money.Money
+}
+
 type InstallmentPlan struct {
 	ID                     uuid.UUID
 	TransactionID          uuid.UUID
@@ -50,6 +58,8 @@ type InstallmentPlan struct {
 	InformedOn             calendar.Date
 	Installments           []Installment
 	Charged                money.Money
+	Breakdown              []ComponentTotal
+	ChargedWithoutDetail   int
 	RemainingKnown         money.Money
 	RemainingEstimated     money.Money
 }
@@ -84,6 +94,9 @@ func (t *tx) installmentPlan(transactionID uuid.UUID) (*InstallmentPlan, error) 
 		return nil, fmt.Errorf("list installments: %w", err)
 	}
 	plan := toPlan(*row)
+	if err := t.breakdown(&plan); err != nil {
+		return nil, err
+	}
 	known := map[int]Installment{}
 	last := 0
 	for _, installment := range rows {
@@ -117,6 +130,22 @@ func (t *tx) installmentPlan(transactionID uuid.UUID) (*InstallmentPlan, error) 
 		}
 	}
 	return &plan, nil
+}
+
+func (t *tx) breakdown(plan *InstallmentPlan) error {
+	rows, err := t.q.PlanBreakdown(t.ctx, tenantdb.PlanBreakdownParams{AccountID: t.accountID, PlanID: plan.ID})
+	if err != nil {
+		return fmt.Errorf("plan breakdown: %w", err)
+	}
+	for _, row := range rows {
+		plan.Breakdown = append(plan.Breakdown, ComponentTotal{Kind: ComponentKind(row.Kind), Amount: money.Money{Minor: row.AmountMinor, Currency: plan.Charged.Currency}})
+	}
+	without, err := t.q.ChargedWithoutBreakdown(t.ctx, tenantdb.ChargedWithoutBreakdownParams{AccountID: t.accountID, PlanID: plan.ID})
+	if err != nil {
+		return fmt.Errorf("installments without breakdown: %w", err)
+	}
+	plan.ChargedWithoutDetail = int(without)
+	return nil
 }
 
 func toPlan(row tenantdb.InstallmentPlan) InstallmentPlan {
@@ -512,6 +541,9 @@ func (s *statementSubmitter) charge(statement tenantdb.Statement, transactionID,
 	if err != nil {
 		return fmt.Errorf("charge installment: %w", err)
 	}
+	if err := s.askForBreakdown(plan, item); err != nil {
+		return err
+	}
 	for i, future := range item.FutureInstallments {
 		if future.Number <= item.Installment.Number || future.Number > item.Installment.Count {
 			return &ValidationError{Field: fmt.Sprintf("future_installments[%d].number", i), Message: fmt.Sprintf("must be after %d and up to %d", item.Installment.Number, item.Installment.Count)}
@@ -581,4 +613,23 @@ func (s *statementSubmitter) planForLine(transactionID uuid.UUID, item Statement
 		return tenantdb.InstallmentPlan{}, fmt.Errorf("update installment plan: %w", err)
 	}
 	return plan, nil
+}
+
+// askForBreakdown asks once per Pix installment plan, never once per cycle,
+// and stops asking as soon as a statement details an installment.
+func (s *statementSubmitter) askForBreakdown(plan tenantdb.InstallmentPlan, item StatementItem) error {
+	if plan.PaymentModality != string(ModalityPixInstallment) {
+		return nil
+	}
+	question := newClarification{kind: ClarificationMissingBreakdown, transactionID: &plan.TransactionID, subject: subjectBreakdown}
+	if slices.ContainsFunc(item.Components, func(c ChargeComponent) bool { return c.Included }) {
+		return s.t.closeTransactionClarifications(plan.TransactionID, []ClarificationKind{ClarificationMissingBreakdown}, ClarificationResolved, "A fatura passou a detalhar a composição da parcela.")
+	}
+	transaction, err := s.t.transaction(plan.TransactionID)
+	if err != nil {
+		return err
+	}
+	question.question = fmt.Sprintf("A fatura não mostra quanto de cada parcela do Pix parcelado %s é principal, juros, IOF ou tarifa. O valor cobrado foi mantido inteiro. Se você souber a composição, me diga.", describe(transaction))
+	question.context = map[string]any{"installment_count": plan.InstallmentCount, "installment_amount": item.Amount.Decimal(), "currency": item.Amount.Currency}
+	return s.t.openClarification(question)
 }
