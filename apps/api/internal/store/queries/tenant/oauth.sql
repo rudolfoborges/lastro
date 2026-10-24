@@ -17,3 +17,8 @@ SET last_used_at = now()
 WHERE account_id = @account_id
   AND id = @id
   AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute');
+
+-- name: RevokeOAuthGrantsAuthorizedByKey :exec
+UPDATE oauth_grants
+SET revoked_at = now()
+WHERE account_id = @account_id AND api_key_id = @api_key_id AND revoked_at IS NULL;
