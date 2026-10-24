@@ -169,3 +169,40 @@ func TestWalletNotificationsAreDroppedWhileTrackingIsPaused(t *testing.T) {
 		t.Errorf("notification while paused = %s", res.raw)
 	}
 }
+
+func TestDevicesSeeWhatHappenedToTheirNotifications(t *testing.T) {
+	api := newTestAPI(t, config.RateLimits{})
+	accountID, admin := api.signUp("Rudolfo")
+	api.track(accountID, true)
+	_, android := api.createKey(admin, "android", "wallet:ingest")
+	sent := api.do(http.MethodPost, "/v1/wallet/notifications", android, walletNotification(time.Now()))
+
+	res := api.do(http.MethodGet, "/v1/wallet/notifications?device_id=galaxy-s24&limit=10", android, nil)
+
+	assertStatus(t, res, http.StatusOK, "")
+	notifications, _ := res.body["notifications"].([]any)
+	if len(notifications) != 1 {
+		t.Fatalf("notifications = %s, want the one just sent", res.raw)
+	}
+	first, _ := notifications[0].(map[string]any)
+	if field(first, "notification_id") != field(sent.body, "notification_id") || field(first, "status") != "pending_interpretation" {
+		t.Errorf("notification = %v, want %s pending interpretation", first, field(sent.body, "notification_id"))
+	}
+	if strings.Contains(res.raw, "Padaria") || strings.Contains(res.raw, "1234") {
+		t.Errorf("response = %s, must not carry the notification text", res.raw)
+	}
+}
+
+func TestDeviceNotificationsNeedAnIngestKeyAndADevice(t *testing.T) {
+	api := newTestAPI(t, config.RateLimits{})
+	_, admin := api.signUp("Rudolfo")
+	_, reader := api.createKey(admin, "case", "expenses:read")
+	_, android := api.createKey(admin, "android", "wallet:ingest")
+
+	assertStatus(t, api.do(http.MethodGet, "/v1/wallet/notifications?device_id=galaxy-s24", reader, nil),
+		http.StatusForbidden, "forbidden")
+	assertStatus(t, api.do(http.MethodGet, "/v1/wallet/notifications", android, nil),
+		http.StatusBadRequest, "invalid_request")
+	assertStatus(t, api.do(http.MethodGet, "/v1/wallet/notifications?device_id=galaxy-s24&limit=abc", android, nil),
+		http.StatusBadRequest, "invalid_request")
+}

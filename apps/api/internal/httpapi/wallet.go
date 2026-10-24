@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -131,4 +132,90 @@ func (a *api) handleWalletHeartbeat(w http.ResponseWriter, r *http.Request, prin
 	default:
 		writeJSON(w, http.StatusOK, heartbeatResponse{Tracking: tracking.State, ServerTime: receivedAt.UTC()})
 	}
+}
+
+type deviceNotificationsResponse struct {
+	Notifications []deviceNotification `json:"notifications"`
+}
+
+type deviceNotification struct {
+	NotificationID  uuid.UUID                `json:"notification_id"`
+	NotificationKey string                   `json:"notification_key"`
+	Version         int                      `json:"version"`
+	Event           ledger.NotificationEvent `json:"event"`
+	PostedAt        time.Time                `json:"posted_at"`
+	ReceivedAt      time.Time                `json:"received_at"`
+	RemovedAt       *time.Time               `json:"removed_at,omitempty"`
+	Status          string                   `json:"status"`
+	Interpretation  *appliedInterpretation   `json:"interpretation,omitempty"`
+}
+
+type appliedInterpretation struct {
+	EventType   ledger.EventType            `json:"event_type"`
+	Effect      ledger.InterpretationEffect `json:"effect"`
+	Transaction *transactionState           `json:"transaction,omitempty"`
+}
+
+type transactionState struct {
+	Status   ledger.Status  `json:"status"`
+	Category *categoryState `json:"category,omitempty"`
+}
+
+type categoryState struct {
+	Code   string                  `json:"code"`
+	Label  string                  `json:"label"`
+	Status ledger.AllocationStatus `json:"status"`
+}
+
+func (a *api) handleDeviceNotifications(w http.ResponseWriter, r *http.Request, principal accounts.Principal) {
+	query := r.URL.Query()
+	limit := 0
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeErrorMessage(w, http.StatusBadRequest, "invalid_request", "limit must be a positive integer")
+			return
+		}
+		limit = parsed
+	}
+	notifications, err := a.ledger.DeviceNotifications(r.Context(), principal.AccountID, query.Get("device_id"), limit)
+	var validation *ledger.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		writeErrorMessage(w, http.StatusBadRequest, "invalid_request", validation.Error())
+		return
+	case err != nil:
+		a.writeInternalError(w, r, err)
+		return
+	}
+	body := deviceNotificationsResponse{Notifications: make([]deviceNotification, len(notifications))}
+	for i, n := range notifications {
+		body.Notifications[i] = toDeviceNotification(n)
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+func toDeviceNotification(n ledger.DeviceNotification) deviceNotification {
+	out := deviceNotification{
+		NotificationID:  n.NotificationID,
+		NotificationKey: n.NotificationKey,
+		Version:         n.Version,
+		Event:           n.Event,
+		PostedAt:        n.PostedAt.UTC(),
+		ReceivedAt:      n.ReceivedAt.UTC(),
+		RemovedAt:       n.RemovedAt,
+		Status:          "pending_interpretation",
+	}
+	if n.Interpretation == nil {
+		return out
+	}
+	out.Status = "interpreted"
+	out.Interpretation = &appliedInterpretation{EventType: n.Interpretation.EventType, Effect: n.Interpretation.Effect}
+	if n.Transaction != nil {
+		out.Interpretation.Transaction = &transactionState{Status: n.Transaction.Status}
+		if c := n.Transaction.Category; c != nil {
+			out.Interpretation.Transaction.Category = &categoryState{Code: c.Code, Label: c.Label, Status: c.Status}
+		}
+	}
+	return out
 }

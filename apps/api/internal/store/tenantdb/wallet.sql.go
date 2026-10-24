@@ -100,6 +100,62 @@ func (q *Queries) InsertWalletNotificationVersion(ctx context.Context, arg Inser
 	return i, err
 }
 
+const listDeviceNotificationVersions = `-- name: ListDeviceNotificationVersions :many
+SELECT v.observation_id, v.notification_id, n.notification_key, v.version, v.event, v.posted_at, v.received_at, n.removed_at
+FROM wallet_notification_versions v
+JOIN wallet_notifications n ON n.account_id = v.account_id AND n.id = v.notification_id
+JOIN wallet_devices d ON d.account_id = n.account_id AND d.id = n.wallet_device_id
+WHERE v.account_id = $1 AND d.device_id = $2
+ORDER BY v.received_at DESC, v.observation_id DESC
+LIMIT $3
+`
+
+type ListDeviceNotificationVersionsParams struct {
+	AccountID uuid.UUID
+	DeviceID  string
+	RowLimit  int32
+}
+
+type ListDeviceNotificationVersionsRow struct {
+	ObservationID   uuid.UUID
+	NotificationID  uuid.UUID
+	NotificationKey string
+	Version         int32
+	Event           string
+	PostedAt        time.Time
+	ReceivedAt      time.Time
+	RemovedAt       *time.Time
+}
+
+func (q *Queries) ListDeviceNotificationVersions(ctx context.Context, arg ListDeviceNotificationVersionsParams) ([]ListDeviceNotificationVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listDeviceNotificationVersions, arg.AccountID, arg.DeviceID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDeviceNotificationVersionsRow{}
+	for rows.Next() {
+		var i ListDeviceNotificationVersionsRow
+		if err := rows.Scan(
+			&i.ObservationID,
+			&i.NotificationID,
+			&i.NotificationKey,
+			&i.Version,
+			&i.Event,
+			&i.PostedAt,
+			&i.ReceivedAt,
+			&i.RemovedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockWalletNotificationByKey = `-- name: LockWalletNotificationByKey :one
 SELECT id, account_id, wallet_device_id, notification_key, package, removed_at, created_at
 FROM wallet_notifications
@@ -154,6 +210,42 @@ func (q *Queries) MarkWalletNotificationRemoved(ctx context.Context, arg MarkWal
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const transactionStatuses = `-- name: TransactionStatuses :many
+SELECT id, status
+FROM transactions
+WHERE account_id = $1 AND id = ANY($2::uuid[])
+`
+
+type TransactionStatusesParams struct {
+	AccountID      uuid.UUID
+	TransactionIds []uuid.UUID
+}
+
+type TransactionStatusesRow struct {
+	ID     uuid.UUID
+	Status string
+}
+
+func (q *Queries) TransactionStatuses(ctx context.Context, arg TransactionStatusesParams) ([]TransactionStatusesRow, error) {
+	rows, err := q.db.Query(ctx, transactionStatuses, arg.AccountID, arg.TransactionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TransactionStatusesRow{}
+	for rows.Next() {
+		var i TransactionStatusesRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertWalletDevice = `-- name: UpsertWalletDevice :one
