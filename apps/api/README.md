@@ -209,6 +209,8 @@ Each transaction has **one category**, stored in `category_allocations` as a sin
 | `recorded` | `completed` | Written; the answer lists `inferred` and `pending` fields |
 | `duplicate_of` | `completed` | The same `request_id` was already recorded; the existing transaction is returned |
 | `possible_duplicate` | `pending` | Nothing written: the same amount and normalized text arrived in the same ChatGPT conversation (`_meta["openai/session"]`) in the last 24 hours. Case asks Rudolfo and, for a second real purchase, repeats the call with `confirm_distinct: true` |
+| `possible_match` | `pending` | Nothing written: Google Wallet or a statement already recorded an open purchase with the same amount within two days (see [Matching sources](#matching-sources)). Case repeats the call with `related_transaction_id` (same purchase) or `confirm_distinct: true` |
+| `linked` | `completed` | The conversation became evidence of an existing transaction and filled only what was missing (merchant, purpose, card, date, installments, a category Rudolfo said); nothing new was created |
 | `needs_clarification` | `pending` | Nothing written: the amount or what was bought is missing; `question` says what to ask |
 
 Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments are kept as informed; the installment plan comes later.
@@ -263,7 +265,7 @@ A notification version is pending while its observation has no interpretation. C
 | `unknown` | Nothing, plus a `reading_doubt` clarification on the observation |
 
 - **Idempotency:** each interpretation stores a hash of the submitted reading. The same reading again answers `already_applied`. A different one is refused (`already_interpreted`) unless Case sends `reinterpret` with a reason; then a purchase reading corrects the same transaction, and a non-expense reading undoes the evidence and voids the transaction the notification created. Other changes are refused (`reinterpretation_not_supported`).
-- **Possible matches:** a `purchase` without `related_transaction_id` is checked against transactions of earlier versions of the same notification and against open purchases with the same amount and currency within two days that no notification confirms yet. If there are any, nothing is written and the answer is `possible_match` with the candidates and the reasons in pt-BR. Case decides: `related_transaction_id` for the same purchase, `confirm_distinct` for another.
+- **Possible matches:** a `purchase` without `related_transaction_id` is checked against transactions of earlier versions of the same notification and against open card purchases with the same amount within two days that no notification confirms yet (see [Matching sources](#matching-sources)). If there are any, nothing is written and the answer is `possible_match` with the candidates, their reasons and their differences in pt-BR. Case decides: `related_transaction_id` for the same purchase, `confirm_distinct` for another.
 - **Invariants:** a transaction confirmed by one notification cannot be confirmed by another, a cancellation cannot void a charged purchase, and refunds cannot add up to more than the purchase.
 
 ### Statements
@@ -285,9 +287,19 @@ Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statem
   - **Composition:** previous balance, purchases, installments, charges (interest, fees, taxes), payments, credits (credits and refunds), and the net of adjustments and unknown lines.
   - **Computed total:** previous balance plus debits minus credits, always computed by the server from the stored lines. The difference with the printed total is shown in cents and never turned into an adjustment.
   - **Status:** `read_incomplete` (partial reading, unknown lines or open reading doubts), `divergent` (a difference) or `reconciled`. Reconciled never means paid.
+  - **Unmatched purchases:** open credit card purchases from the conversation or Google Wallet, on the statement's cards and dated within the cycle (`period_start`, or 30 days before closing, up to the closing date), that no statement line confirmed. They are listed in `unmatched` and in `pending` (`unmatched_purchases`) without changing the status, and stay provisional.
   - **Where it appears:** every submission answer carries the review, and `get_statement_review` answers "what is left to check" for the latest statement or a closing date. `get_statement_line_source` returns the page and the excerpt of a line by transaction or by index, and `list_clarifications` filters by `statement_id`.
   - **Dry run:** with `dry_run: true` the reading runs inside a transaction that is rolled back, and the answer is `previewed` with the same review.
 - **Lines already recorded elsewhere:** a `purchase` or `refund` without `related_transaction_id` is checked against open transactions of the same nature with the same amount (or the same original amount for international lines), within five days of the line date and not yet charged by a statement line, paid by credit card or with no payment method. If any item has candidates, nothing is written and the answer is `possible_match`, with the candidates per item. Case resends the whole reading deciding each item: `related_transaction_id` links the line, fills what is missing (card, merchant, date, installments, the amount when it differs in the same currency) and confirms the transaction; `confirm_distinct` creates a new one. A transaction already charged by a statement line cannot be linked to another line, except installments.
+
+### Matching sources
+
+The same purchase may arrive from the conversation, from Google Wallet and from a statement. **Lastro never links them by itself** (`ledger/matching.go`): it offers explainable candidates and Case decides, asking Rudolfo when in doubt.
+
+- **Candidates** are open transactions of the same nature with the same amount and currency, or the same original amount for international purchases (no exchange tolerance and no conversion), a compatible payment method (both cards, or the same kind, or unknown) and a close date. The window is two days for the conversation and notifications, five days for statement lines and for `find_match_candidates`; a month-precision date uses its month, and an unknown date uses the day the record was created. Transactions that already have evidence from the source being matched are never candidates.
+- **Explanation:** every candidate carries its `sources` and, in pt-BR, `reasons` (same amount, same date, same card or payment method, same merchant) and `differences` (another name, days apart, another card, missing payment method). Merchant names are compared only after case, accents and punctuation are folded; acquirer prefixes and aliases are Case's call.
+- **Where:** `record_expense`, `submit_notification_interpretations` and `submit_statement_extraction` answer `possible_match` and write nothing until Case decides with `related_transaction_id` or `confirm_distinct`. `find_match_candidates` searches on demand from a transaction or from an observation that is evidence of one.
+- **Invariants:** a transaction has at most one confirmed observation per source: one conversation report, one Google Wallet notification (its versions are the same notification) and one statement line, except installment lines, which charge the same purchase once per cycle. Linking anything else is refused. The amount never adds up evidence.
 
 ### What the app sees
 
@@ -369,13 +381,13 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 - **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes, `statements:write` for statements) and refuses the call with a `forbidden` tool error otherwise.
 - **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
-- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`) for other clients. The server `instructions` summarize the rules.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
 - **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -393,6 +405,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line; `dry_run` reviews without recording |
 | `get_statement_review` | `expenses:read` | Composition, computed versus printed total, status and pending items of a statement |
 | `get_statement_line_source` | `expenses:read` | Page and excerpt of a statement line, by transaction or by statement and index |
+| `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
 
 Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` and `submit_statement_extraction` are the exceptions: the first is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)), the second by the statement identity and the content of the reading (see [Statements](#statements)).
 

@@ -166,7 +166,7 @@ type StatementCompositionOutput struct {
 }
 
 type ReviewPendingOutput struct {
-	Kind        string `json:"kind" jsonschema:"partial_reading, unknown_lines, reading_doubts, difference or clarifications"`
+	Kind        string `json:"kind" jsonschema:"partial_reading, unknown_lines, reading_doubts, difference, unmatched_purchases or clarifications"`
 	Description string `json:"description" jsonschema:"in Portuguese, to relay to Rudolfo"`
 }
 
@@ -174,6 +174,7 @@ type StatementReviewOutput struct {
 	Status      string                     `json:"status" jsonschema:"reconciled (the reading is complete and the composition explains the printed total), divergent or read_incomplete; reconciled never means paid"`
 	Composition StatementCompositionOutput `json:"composition"`
 	Pending     []ReviewPendingOutput      `json:"pending,omitempty" jsonschema:"what is still missing to check this statement"`
+	Unmatched   []TransactionOutput        `json:"unmatched,omitempty" jsonschema:"card purchases recorded from the conversation or Google Wallet in this cycle that no line of this statement confirmed; they stay provisional and may appear in the next statement"`
 }
 
 type GetStatementReviewInput struct {
@@ -384,6 +385,9 @@ func reviewOutput(review ledger.StatementReview) StatementReviewOutput {
 	for _, pending := range review.Pending {
 		out.Pending = append(out.Pending, ReviewPendingOutput{Kind: string(pending.Kind), Description: pending.Description})
 	}
+	for _, transaction := range review.Unmatched {
+		out.Unmatched = append(out.Unmatched, transactionOutput(transaction, nil))
+	}
 	return out
 }
 
@@ -567,11 +571,7 @@ func statementSubmissionOutput(submission ledger.StatementSubmission) SubmitStat
 		out.Lines = append(out.Lines, statementLineOutput(line))
 	}
 	for _, item := range submission.Candidates {
-		candidates := ItemCandidatesOutput{Index: item.Position - 1}
-		for _, candidate := range item.Candidates {
-			candidates.Candidates = append(candidates.Candidates, MatchCandidateOutput{Transaction: transactionOutput(candidate.Transaction, &candidate.Category), Reasons: candidate.Reasons})
-		}
-		out.Candidates = append(out.Candidates, candidates)
+		out.Candidates = append(out.Candidates, ItemCandidatesOutput{Index: item.Position - 1, Candidates: candidateOutputs(item.Candidates)})
 	}
 	if submission.Diff != nil {
 		out.Diff = diffOutput(*submission.Diff)

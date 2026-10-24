@@ -22,6 +22,7 @@ import (
 
 const (
 	operationRecordExpense = "record_expense"
+	reasonConversationLink = "Conferido com o que Rudolfo contou na conversa."
 	repetitionWindow       = 24 * time.Hour
 	maxFutureMessageAt     = time.Hour
 	maxRawText             = maxOriginalDescription
@@ -38,30 +39,33 @@ type ExpenseResult string
 
 const (
 	ExpenseRecorded           ExpenseResult = "recorded"
+	ExpenseLinked             ExpenseResult = "linked"
 	ExpenseDuplicateOf        ExpenseResult = "duplicate_of"
 	ExpensePossibleDuplicate  ExpenseResult = "possible_duplicate"
+	ExpensePossibleMatch      ExpenseResult = "possible_match"
 	ExpenseNeedsClarification ExpenseResult = "needs_clarification"
 )
 
 type ExpenseReport struct {
-	RequestID       string
-	Conversation    string
-	ReceivedAt      time.Time
-	MessageAt       *time.Time
-	InputMode       InputMode
-	RawText         string
-	Amount          *money.Money
-	Description     string
-	Merchant        *string
-	DateReference   *calendar.Reference
-	OccurredAt      *time.Time
-	OccurredOn      *calendar.Date
-	PaymentMethod   *PaymentMethodRef
-	Category        *string
-	CategoryStatus  AllocationStatus
-	Purpose         *string
-	Installments    *Installments
-	ConfirmDistinct bool
+	RequestID            string
+	Conversation         string
+	ReceivedAt           time.Time
+	MessageAt            *time.Time
+	InputMode            InputMode
+	RawText              string
+	Amount               *money.Money
+	Description          string
+	Merchant             *string
+	DateReference        *calendar.Reference
+	OccurredAt           *time.Time
+	OccurredOn           *calendar.Date
+	PaymentMethod        *PaymentMethodRef
+	Category             *string
+	CategoryStatus       AllocationStatus
+	Purpose              *string
+	Installments         *Installments
+	RelatedTransactionID *uuid.UUID
+	ConfirmDistinct      bool
 }
 
 type ExpenseOutcome struct {
@@ -71,6 +75,8 @@ type ExpenseOutcome struct {
 	Inferred       []string
 	Pending        []string
 	Clarifications []Clarification
+	Candidates     []MatchCandidate
+	Changed        []Field
 	Question       string
 	RepeatedAt     *time.Time
 	Location       *time.Location
@@ -78,6 +84,8 @@ type ExpenseOutcome struct {
 
 type recordedExpense struct {
 	TransactionID uuid.UUID `json:"transaction_id"`
+	Linked        bool      `json:"linked,omitempty"`
+	Changed       []Field   `json:"changed,omitempty"`
 }
 
 type pendingExpense struct {
@@ -110,8 +118,11 @@ func (s *Service) RecordExpense(ctx context.Context, accountID uuid.UUID, report
 			return err
 		}
 		outcome, err = t.expenseOutcome(stored.TransactionID, report, loc)
-		if replayed {
+		switch {
+		case replayed:
 			outcome.Result = ExpenseDuplicateOf
+		case stored.Linked:
+			outcome.Result, outcome.Changed = ExpenseLinked, stored.Changed
 		}
 		return err
 	})
@@ -123,41 +134,24 @@ func (s *Service) RecordExpense(ctx context.Context, accountID uuid.UUID, report
 }
 
 func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor) (recordedExpense, error) {
-	fingerprint := repetitionFingerprint(report)
-	if !report.ConfirmDistinct && report.Conversation != "" {
-		repeated, err := t.q.FindRecentRepetition(t.ctx, tenantdb.FindRecentRepetitionParams{
-			AccountID:   t.accountID,
-			Source:      string(SourceConversation),
-			Fingerprint: fingerprint,
-			Since:       report.ReceivedAt.Add(-repetitionWindow),
-		})
-		switch {
-		case err == nil:
-			existing, err := t.transaction(repeated.TransactionID)
-			if err != nil {
-				return recordedExpense{}, err
-			}
-			current, err := t.currentCategory(existing.ID)
-			if err != nil {
-				return recordedExpense{}, err
-			}
-			repeatedAt := repeated.ReceivedAt
-			return recordedExpense{}, &pendingExpense{outcome: ExpenseOutcome{
-				Result:      ExpensePossibleDuplicate,
-				Transaction: &existing,
-				Category:    EffectiveCategory(existing, current),
-				RepeatedAt:  &repeatedAt,
-				Location:    loc,
-			}}
-		case !errors.Is(err, pgx.ErrNoRows):
-			return recordedExpense{}, fmt.Errorf("look for repetitions: %w", err)
-		}
-	}
-
 	occurred, err := occurrenceOf(report, loc)
 	if err != nil {
 		return recordedExpense{}, err
 	}
+	fingerprint := repetitionFingerprint(report)
+	if !report.ConfirmDistinct && report.RelatedTransactionID == nil {
+		if err := t.checkRepetition(report, fingerprint, loc); err != nil {
+			return recordedExpense{}, err
+		}
+		candidates, err := t.findCandidates(conversationProbe(report, occurred, loc), loc)
+		if err != nil {
+			return recordedExpense{}, err
+		}
+		if len(candidates) > 0 {
+			return recordedExpense{}, &pendingExpense{outcome: ExpenseOutcome{Result: ExpensePossibleMatch, Candidates: candidates, Location: loc}}
+		}
+	}
+
 	interpreted := map[string]any{"description": report.Description}
 	if report.Merchant != nil {
 		interpreted["merchant"] = *report.Merchant
@@ -206,6 +200,9 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		return recordedExpense{}, err
 	}
 
+	if report.RelatedTransactionID != nil {
+		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, actor)
+	}
 	description := report.Description
 	if description == "" {
 		description = *report.Merchant
@@ -225,19 +222,135 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 	if err != nil {
 		return recordedExpense{}, err
 	}
-	if report.Category != nil {
-		categorizer, reason := actor, "Classificado pela Case."
-		if report.CategoryStatus == AllocationConfirmed {
-			categorizer.Author, reason = AuthorUser, "Categoria informada por Rudolfo."
-		}
-		if _, err := t.categorize(created, *report.Category, report.CategoryStatus, reason, categorizer); err != nil {
-			return recordedExpense{}, err
-		}
+	if err := t.categorizeReport(created, report, actor, false); err != nil {
+		return recordedExpense{}, err
 	}
 	if err := t.refreshClarifications(created.ID); err != nil {
 		return recordedExpense{}, err
 	}
 	return recordedExpense{TransactionID: created.ID}, nil
+}
+
+func (t *tx) checkRepetition(report ExpenseReport, fingerprint []byte, loc *time.Location) error {
+	if report.Conversation == "" {
+		return nil
+	}
+	repeated, err := t.q.FindRecentRepetition(t.ctx, tenantdb.FindRecentRepetitionParams{
+		AccountID:   t.accountID,
+		Source:      string(SourceConversation),
+		Fingerprint: fingerprint,
+		Since:       report.ReceivedAt.Add(-repetitionWindow),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("look for repetitions: %w", err)
+	}
+	existing, err := t.transaction(repeated.TransactionID)
+	if err != nil {
+		return err
+	}
+	current, err := t.currentCategory(existing.ID)
+	if err != nil {
+		return err
+	}
+	repeatedAt := repeated.ReceivedAt
+	return &pendingExpense{outcome: ExpenseOutcome{
+		Result:      ExpensePossibleDuplicate,
+		Transaction: &existing,
+		Category:    EffectiveCategory(existing, current),
+		RepeatedAt:  &repeatedAt,
+		Location:    loc,
+	}}
+}
+
+func conversationProbe(report ExpenseReport, occurred calendar.Occurrence, loc *time.Location) matchProbe {
+	probe := matchProbe{
+		nature:          NatureExpense,
+		amount:          *report.Amount,
+		merchant:        report.Merchant,
+		occurred:        occurred,
+		method:          report.PaymentMethod,
+		excludedSources: []Source{SourceConversation},
+		paymentKinds:    compatibleKinds(report.PaymentMethod),
+		label:           "na conversa",
+	}
+	probe.from, probe.to = occurrenceWindow(occurred, calendar.DateOf(report.messageAt(), loc), matchWindowDays)
+	return probe
+}
+
+func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseReport, occurred calendar.Occurrence, actor Actor) (recordedExpense, error) {
+	current, err := t.lockOpenTransaction(transactionID)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return recordedExpense{}, &ValidationError{Field: "related_transaction_id", Message: "is not a transaction of Rudolfo's account"}
+	case errors.Is(err, ErrTransactionClosed):
+		return recordedExpense{}, &ValidationError{Field: "related_transaction_id", Message: "is voided or merged; link to the transaction that is still open"}
+	case err != nil:
+		return recordedExpense{}, err
+	}
+	if current.Nature != NatureExpense {
+		return recordedExpense{}, &ValidationError{Field: "related_transaction_id", Message: "must be a purchase (nature expense)"}
+	}
+	if err := t.assertDistinctSources(transactionID, observationID, SourceConversation); err != nil {
+		return recordedExpense{}, err
+	}
+	if _, err := t.linkEvidence(transactionID, observationID, EvidenceLink{Status: EvidenceConfirmed, Origin: OriginAgent, Reasons: []string{"same purchase, identified by Case"}}); err != nil {
+		return recordedExpense{}, err
+	}
+	actor.ObservationID = &observationID
+	correction, err := t.correct(transactionID, conversationGapPatch(current, report, occurred), reasonConversationLink, actor)
+	if err != nil {
+		return recordedExpense{}, err
+	}
+	if err := t.categorizeReport(correction.Transaction, report, actor, true); err != nil {
+		return recordedExpense{}, err
+	}
+	if err := t.refreshClarifications(transactionID); err != nil {
+		return recordedExpense{}, err
+	}
+	return recordedExpense{TransactionID: transactionID, Linked: true, Changed: correction.Changed}, nil
+}
+
+func conversationGapPatch(current Transaction, report ExpenseReport, occurred calendar.Occurrence) Patch {
+	var patch Patch
+	if current.Merchant == nil && report.Merchant != nil {
+		patch.Merchant = Value(*report.Merchant)
+	}
+	if current.Purpose == nil && report.Purpose != nil {
+		patch.Purpose = Value(*report.Purpose)
+	}
+	if ref := report.PaymentMethod; ref != nil {
+		method := current.PaymentMethod
+		if method == nil || (method.Kind == ref.Kind && method.CardLast4 == nil && ref.CardLast4 != nil) {
+			patch.PaymentMethod = Value(*ref)
+		}
+	}
+	if occurred.Known() && (current.Occurred.Precision == calendar.PrecisionUnknown || current.Occurred.Precision == calendar.PrecisionMonth) {
+		patch.Occurred = &occurred
+	}
+	if current.Installments == nil && report.Installments != nil && (report.Installments.Amount == nil || report.Installments.Amount.Currency == current.Amount.Currency) {
+		patch.Installments = Value(*report.Installments)
+	}
+	return patch
+}
+
+func (t *tx) categorizeReport(transaction Transaction, report ExpenseReport, actor Actor, onlyWhenMissing bool) error {
+	if report.Category == nil {
+		return nil
+	}
+	categorizer, reason := actor, "Classificado pela Case."
+	if report.CategoryStatus == AllocationConfirmed {
+		categorizer.Author, reason = AuthorUser, "Categoria informada por Rudolfo."
+	} else if onlyWhenMissing {
+		current, err := t.currentCategory(transaction.ID)
+		if err != nil || current != nil {
+			return err
+		}
+	}
+	_, err := t.categorize(transaction, *report.Category, report.CategoryStatus, reason, categorizer)
+	return err
 }
 
 func (t *tx) expenseOutcome(transactionID uuid.UUID, report ExpenseReport, loc *time.Location) (ExpenseOutcome, error) {
@@ -352,6 +465,9 @@ func normalizeReport(report ExpenseReport) (ExpenseReport, error) {
 		if err := validatePaymentMethod(*report.PaymentMethod); err != nil {
 			return report, err
 		}
+	}
+	if report.RelatedTransactionID != nil && report.ConfirmDistinct {
+		return report, &ValidationError{Field: "confirm_distinct", Message: "cannot be sent with related_transaction_id"}
 	}
 	return report, nil
 }

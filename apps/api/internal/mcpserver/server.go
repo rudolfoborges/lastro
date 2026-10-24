@@ -28,7 +28,8 @@ const serverInstructions = `Lastro stores, validates and computes Rudolfo's expe
 - Confirm to Rudolfo what was recorded and what is pending, using each answer's summary. A failed outcome means nothing was recorded.
 - Never compute totals yourself; use Lastro's query tools.
 - Statement PDFs never go to Lastro: read them yourself and submit only the structured reading.
-Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, and "statements" before submitting a credit card statement.`
+- Lastro never decides that records from different sources are the same purchase: you do, from the candidates it explains, asking Rudolfo when in doubt.
+Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, and "matching" before linking records of the same purchase.`
 
 type Deps struct {
 	Accounts *accounts.Service
@@ -72,6 +73,7 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerNotifications()
 	s.registerCoverage()
 	s.registerStatements()
+	s.registerMatching()
 	return s
 }
 

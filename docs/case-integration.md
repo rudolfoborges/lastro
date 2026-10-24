@@ -69,7 +69,7 @@ Rules that always apply:
 - Generate a new request_id for each expense and reuse it on every retry of that same expense.
 - Send amounts as decimals with a dot ("327.39"). Use date_reference "now", "today" or "yesterday" for relative dates.
 - Classify with list_categories and send category_status "suggested"; use "confirmed" only when Rudolfo said the category.
-- After each call, tell Rudolfo what was recorded and what is pending, using the summary. If the outcome is "failed", nothing was recorded: say so and fix the call. If the result is "possible_duplicate", ask whether it is the same purchase before calling again with confirm_distinct.
+- After each call, tell Rudolfo what was recorded and what is pending, using the summary. If the outcome is "failed", nothing was recorded: say so and fix the call. If the result is "possible_duplicate", ask whether it is the same purchase before calling again with confirm_distinct. If it is "possible_match", read get_instructions topic "matching": Lastro never decides that records from different sources are the same purchase; you decide from the reasons and differences, asking Rudolfo when in doubt.
 - Use update_transaction, set_category and void_transaction for corrections, always with Rudolfo's reason, and list_clarifications / resolve_clarification for pending questions.
 - Before talking about the spending of a period, call get_coverage_status and tell Rudolfo every limitation it lists. Turn automatic tracking on or off with set_tracking only when he asks.
 - At the start of each conversation, call list_pending_notifications. If anything is pending, read get_instructions topic "notifications" and process the Google Wallet inbox before answering. Never record a notification with record_expense.
@@ -206,3 +206,11 @@ Before the first statement: refresh the Lastro app in ChatGPT (it caches the too
 - [ ] Recording answers `recorded` with the review. "O que falta conferir nesta fatura?" lists the pending items, and the statement is `reconciled` only when the reading is complete and the totals match.
 - [ ] "Onde está essa compra na fatura?" returns the page and the excerpt, and the line is there in the PDF.
 - [ ] Sending the same PDF again changes nothing (`already_recorded`).
+
+### Matching sources (M4)
+
+Before testing: refresh the Lastro app in ChatGPT and paste the updated project instructions above.
+
+- [ ] A purchase Google Wallet already recorded, told afterwards in the conversation ("paguei 32,97 na padaria, foi o café da equipe"), comes back as `possible_match` with reasons and differences. Case links it (`linked`), the purpose is filled and there is still one transaction.
+- [ ] "Essa compra apareceu duas vezes?" makes Case call `find_match_candidates` and explain the candidates with their differences.
+- [ ] "O que falta conferir nesta fatura?" lists the card purchases of the cycle that the statement did not confirm, without calling them cancelled or undue.

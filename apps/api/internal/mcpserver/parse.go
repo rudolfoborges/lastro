@@ -42,3 +42,11 @@ func enumValues[T ~string](values []T) []any {
 	}
 	return out
 }
+
+func stringsOf[T ~string](values []T) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = string(v)
+	}
+	return out
+}

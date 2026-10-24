@@ -35,7 +35,7 @@ The coverage status shows Rudolfo how long the inbox has been waiting, so a queu
    - `occurred_at` only when the text states a purchase time different from `posted_at`.
    - `category`: classify as in the classification policy; it is always a suggestion.
 4. **Versions.** `version` above 1 means the phone updated the notification. `previous_versions` shows the earlier texts and your reading of them. If an earlier version became a transaction, send `purchase_update` with `related_transaction_id` set to that transaction, unless the text clearly shows a different purchase.
-5. **Purchases Rudolfo already told you about.** Send `purchase` without `related_transaction_id` first. When a transaction with the same amount and a close date exists, Lastro answers `possible_match` with candidates and the reasons. Then:
+5. **Purchases already recorded.** Send `purchase` without `related_transaction_id` first. When a transaction with the same amount and a close date exists (from the conversation or a statement), Lastro answers `possible_match` with candidates, their `reasons` and their `differences` (see `get_instructions` topic `matching`). Then:
    - same purchase (same amount, same day, compatible merchant): send the item again with `related_transaction_id`. Lastro links the notification and fills the card, the exact time and missing fields, and keeps what Rudolfo said;
    - a different purchase: send it again with `confirm_distinct: true`;
    - not sure: ask Rudolfo. Two purchases of the same amount on the same day can both be real.
