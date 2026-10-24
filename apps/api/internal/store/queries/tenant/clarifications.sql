@@ -54,3 +54,9 @@ SELECT EXISTS (
     SELECT FROM clarifications
     WHERE account_id = @account_id AND dedup_key = @dedup_key AND status = 'dismissed'
 );
+
+-- name: OpenStatementClarifications :many
+SELECT *
+FROM clarifications
+WHERE account_id = @account_id AND statement_id = @statement_id AND status = 'open'
+ORDER BY created_at, id;

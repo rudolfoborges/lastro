@@ -50,7 +50,7 @@ func (s *Service) SubmitStatement(ctx context.Context, accountID uuid.UUID, in S
 		sub := &statementSubmitter{t: t, in: in, identities: itemIdentities(in), loc: loc, actor: actor, receivedAt: receivedAt}
 		out, err = sub.run()
 		out.Location = loc
-		if err == nil && in.DryRun && out.Result == StatementRecorded {
+		if err == nil && in.DryRun && (out.Result == StatementRecorded || out.Result == StatementNewVersion) {
 			out.Result = StatementPreviewed
 			return errDryRun
 		}
@@ -71,7 +71,7 @@ func (s *statementSubmitter) run() (StatementSubmission, error) {
 	case !errors.Is(err, pgx.ErrNoRows):
 		return StatementSubmission{}, fmt.Errorf("find statement: %w", err)
 	}
-	candidates, err := s.candidates()
+	candidates, err := s.candidates(func(int) bool { return true })
 	if err != nil || len(candidates) > 0 {
 		return StatementSubmission{Result: StatementPossibleMatch, Candidates: candidates}, err
 	}
@@ -132,7 +132,7 @@ func (s *statementSubmitter) resubmitted(statement tenantdb.Statement, hash []by
 		return StatementSubmission{}, fmt.Errorf("latest statement version: %w", err)
 	}
 	if !bytes.Equal(version.ContentHash, hash) {
-		return StatementSubmission{}, ErrStatementVersionUnsupported
+		return s.newVersion(statement, version, hash)
 	}
 	lines, err := s.t.statementLines(version.ID)
 	if err != nil {
@@ -174,9 +174,17 @@ func (s *statementSubmitter) insertVersion(statementID uuid.UUID, number int32, 
 }
 
 func (s *statementSubmitter) record(statement tenantdb.Statement, version tenantdb.StatementVersion, index int, item StatementItem) (StatementLine, error) {
+	key := s.identities[index].sourceKey(statement.ID)
+	existing, err := s.t.q.GetObservationBySourceKey(s.t.ctx, tenantdb.GetObservationBySourceKeyParams{AccountID: s.t.accountID, Source: string(SourceStatementLine), SourceKey: key})
+	switch {
+	case err == nil:
+		return s.returned(statement, version, index, item, existing.ID)
+	case !errors.Is(err, pgx.ErrNoRows):
+		return StatementLine{}, fmt.Errorf("find line of an earlier version: %w", err)
+	}
 	observation, err := s.t.recordObservation(NewObservation{
 		Source:     SourceStatementLine,
-		SourceKey:  s.identities[index].sourceKey(statement.ID),
+		SourceKey:  key,
 		Payload:    s.linePayload(statement, item),
 		ReceivedAt: s.receivedAt,
 	})
@@ -187,7 +195,11 @@ func (s *statementSubmitter) record(statement tenantdb.Statement, version tenant
 	if err != nil {
 		return StatementLine{}, err
 	}
-	line.Position, line.ObservationID = index+1, observation.ID
+	return s.insertLine(version, index, observation.ID, item, line)
+}
+
+func (s *statementSubmitter) insertLine(version tenantdb.StatementVersion, index int, observationID uuid.UUID, item StatementItem, line StatementLine) (StatementLine, error) {
+	line.Position, line.ObservationID = index+1, observationID
 	line.Kind, line.Direction, line.Amount, line.Page = item.Kind, item.Direction, item.Amount, item.Page
 	line.Excerpt = item.Excerpt
 	details, err := json.Marshal(map[string]any{"effect": line.Effect})
@@ -198,7 +210,7 @@ func (s *statementSubmitter) record(statement tenantdb.Statement, version tenant
 		ID:                 store.NewID(),
 		AccountID:          s.t.accountID,
 		StatementVersionID: version.ID,
-		ObservationID:      observation.ID,
+		ObservationID:      observationID,
 		Position:           int32(line.Position), //nolint:gosec // bounded by maxStatementItems
 		Kind:               string(item.Kind),
 		Direction:          string(item.Direction),
@@ -423,7 +435,7 @@ func (s *statementSubmitter) withTransaction(line StatementLine, transactionID u
 	return line, nil
 }
 
-func (s *statementSubmitter) candidates() ([]ItemCandidates, error) {
+func (s *statementSubmitter) candidates(eligible func(index int) bool) ([]ItemCandidates, error) {
 	linked := map[uuid.UUID]bool{}
 	for _, item := range s.in.Items {
 		if item.RelatedTransactionID != nil {
@@ -432,7 +444,7 @@ func (s *statementSubmitter) candidates() ([]ItemCandidates, error) {
 	}
 	var out []ItemCandidates
 	for i, item := range s.in.Items {
-		if (item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct {
+		if (item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct || !eligible(i) {
 			continue
 		}
 		found, err := s.itemCandidates(item, linked)

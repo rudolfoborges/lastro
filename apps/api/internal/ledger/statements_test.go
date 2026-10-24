@@ -281,17 +281,3 @@ func TestAnUnknownCategoryRejectsTheWholeStatement(t *testing.T) {
 		t.Error("the statement was recorded halfway")
 	}
 }
-
-func TestADifferentReadingOfTheSameStatementIsRefusedUntilVersionsExist(t *testing.T) {
-	f := newFixture(t)
-	f.submitStatement(syntheticStatement())
-	changed := syntheticStatement()
-	changed.Issuer = "BANCO  EXEMPLO"
-	changed.Total = brl(98387)
-
-	_, err := f.ledger.SubmitStatement(t.Context(), f.account, changed, statementReceivedAt, agent)
-
-	if !errors.Is(err, ledger.ErrStatementVersionUnsupported) {
-		t.Errorf("error = %v, want the same statement recognized by issuer, card and closing date", err)
-	}
-}

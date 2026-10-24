@@ -195,3 +195,14 @@ Run with Case in ChatGPT after connecting it. Use real but harmless expenses and
 - [ ] "Como está a cobertura desta semana?" lists the gaps and the inbox state from `get_coverage_status`.
 - [ ] With a real Wallet notification pending, a new conversation makes Case process the inbox first and report the purchase; resending the same interpretation changes nothing.
 - [ ] A scheduled task that processes the inbox actually records the purchase (if not, keep only the per-conversation trigger).
+
+### Statements (M3)
+
+Before the first statement: refresh the Lastro app in ChatGPT (it caches the tool list), paste the updated project instructions above and, if `submit_statement_extraction` answers `forbidden`, disconnect and authorize the app again so the grant includes `statements:write`.
+
+- [ ] Sending the last closed statement PDF makes Case read `get_instructions` (statements) and call `submit_statement_extraction` with `dry_run: true` first; nothing is recorded (`previewed`).
+- [ ] The dry run's computed total matches the printed total. If not, Case looks for the misread line before recording; report what it got wrong in #32 (without real data).
+- [ ] Credit card purchases already told in the conversation or seen in Wallet come back as `possible_match`. Case asks or decides, links them and they become confirmed, with no duplicate.
+- [ ] Recording answers `recorded` with the review. "O que falta conferir nesta fatura?" lists the pending items, and the statement is `reconciled` only when the reading is complete and the totals match.
+- [ ] "Onde está essa compra na fatura?" returns the page and the excerpt, and the line is there in the PDF.
+- [ ] Sending the same PDF again changes nothing (`already_recorded`).

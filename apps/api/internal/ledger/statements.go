@@ -34,8 +34,6 @@ const (
 	statementLookback  = 45
 )
 
-var ErrStatementVersionUnsupported = errors.New("a different reading of this statement is already recorded; new versions of a statement are not supported yet")
-
 var cardLast4 = regexp.MustCompile(`^[0-9]{4}$`)
 
 type StatementItemKind string
@@ -199,6 +197,7 @@ type StatementResult string
 const (
 	StatementRecorded        StatementResult = "recorded"
 	StatementPreviewed       StatementResult = "previewed"
+	StatementNewVersion      StatementResult = "new_version"
 	StatementAlreadyRecorded StatementResult = "already_recorded"
 	StatementPossibleMatch   StatementResult = "possible_match"
 )
@@ -229,6 +228,7 @@ type StatementSubmission struct {
 	Lines      []StatementLine
 	Candidates []ItemCandidates
 	Review     *StatementReview
+	Diff       *StatementDiff
 	Location   *time.Location
 }
 
