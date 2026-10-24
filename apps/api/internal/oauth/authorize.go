@@ -81,12 +81,10 @@ func (s *Server) handleAuthorizationServer(w http.ResponseWriter, _ *http.Reques
 	for i, scope := range SupportedScopes {
 		scopes[i] = string(scope)
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	writeJSON(w, http.StatusOK, map[string]any{
+	metadata := map[string]any{
 		"issuer":                                         s.Issuer(),
 		"authorization_endpoint":                         s.Issuer() + "/oauth/authorize",
 		"token_endpoint":                                 s.Issuer() + "/oauth/token",
-		"registration_endpoint":                          s.Issuer() + "/oauth/register",
 		"revocation_endpoint":                            s.Issuer() + "/oauth/revoke",
 		"response_types_supported":                       []string{responseTypeCode},
 		"grant_types_supported":                          []string{grantCode, grantRefresh},
@@ -95,7 +93,12 @@ func (s *Server) handleAuthorizationServer(w http.ResponseWriter, _ *http.Reques
 		"scopes_supported":                               scopes,
 		"authorization_response_iss_parameter_supported": true,
 		"client_id_metadata_document_supported":          true,
-	})
+	}
+	if s.cfg.DynamicRegistration {
+		metadata["registration_endpoint"] = s.Issuer() + "/oauth/register"
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	writeJSON(w, http.StatusOK, metadata)
 }
 
 func (s *Server) handleAuthorizePage(w http.ResponseWriter, r *http.Request) {

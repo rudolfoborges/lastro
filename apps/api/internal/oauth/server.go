@@ -49,18 +49,19 @@ var (
 	ErrGrantNotFound   = errors.New("OAuth grant not found")
 
 	SupportedScopes = []accounts.Scope{accounts.ScopeExpensesRead, accounts.ScopeExpensesWrite, accounts.ScopeStatementsWrite}
-	defaultScopes   = []accounts.Scope{accounts.ScopeExpensesRead, accounts.ScopeExpensesWrite}
+	defaultScopes   = SupportedScopes
 )
 
 //go:embed templates/*.html
 var templates embed.FS
 
 type Config struct {
-	Issuer        *url.URL
-	RedirectHosts []string
-	MetadataHosts []string
-	AllowLoopback bool
-	Fetcher       MetadataFetcher
+	Issuer              *url.URL
+	RedirectHosts       []string
+	MetadataHosts       []string
+	DynamicRegistration bool
+	AllowLoopback       bool
+	Fetcher             MetadataFetcher
 }
 
 type Server struct {

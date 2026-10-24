@@ -27,7 +27,9 @@ func (s *Server) Routes(mux *http.ServeMux, limited func(http.HandlerFunc) http.
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.handleProtectedResource)
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", s.handleProtectedResource)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", s.handleAuthorizationServer)
-	mux.HandleFunc("POST /oauth/register", limited(s.handleRegister))
+	if s.cfg.DynamicRegistration {
+		mux.HandleFunc("POST /oauth/register", limited(s.handleRegister))
+	}
 	mux.HandleFunc("GET /oauth/authorize", s.handleAuthorizePage)
 	mux.HandleFunc("POST /oauth/authorize", limited(s.handleAuthorizeDecision))
 	mux.HandleFunc("POST /oauth/token", limited(s.handleToken))
