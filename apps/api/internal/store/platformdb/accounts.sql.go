@@ -33,3 +33,34 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 	)
 	return i, err
 }
+
+const listAccounts = `-- name: ListAccounts :many
+SELECT id, name, created_at, timezone
+FROM accounts
+ORDER BY created_at, id
+`
+
+func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := q.db.Query(ctx, listAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.Timezone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

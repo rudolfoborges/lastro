@@ -47,6 +47,8 @@ lastro <command> [arguments]
 | `mcp-stdio` | Serves MCP over stdin/stdout as the account of `LASTRO_API_KEY`, for local MCP clients; logs go to stderr |
 | `migrate up\|down\|status` | Applies every pending migration, rolls back the latest one or lists them |
 | `invites create [--expires-in 168h] [--note text]` | Creates a single-use sign-up invite and prints its code once |
+| `accounts list` | Lists accounts with ID, creation time and name (operator only: it reads across accounts) |
+| `keys create --account <id> --name <name> --scopes <a,b>` | Issues an API key for an account and prints its token once, for example to replace a lost `admin` key |
 | `seed` | Creates a development account with `admin`, `case` and `android` keys and prints their tokens; refuses to run in production |
 | `help` | Lists the commands |
 

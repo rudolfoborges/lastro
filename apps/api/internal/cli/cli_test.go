@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/cli"
+	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/storetest"
 )
 
@@ -144,5 +146,50 @@ func TestMCPStdioRequiresAnAPIKey(t *testing.T) {
 	_, _, err := run(t, []string{"mcp-stdio"}, map[string]string{"DATABASE_URL": "postgres://localhost/none"})
 	if err == nil || !strings.Contains(err.Error(), "LASTRO_API_KEY is required") {
 		t.Errorf("Run(mcp-stdio) error = %v, want missing LASTRO_API_KEY", err)
+	}
+}
+
+func TestOperatorIssuesAKeyForAnExistingAccount(t *testing.T) {
+	databaseURL := storetest.MigratedDatabaseURL(t)
+	vars := map[string]string{"DATABASE_URL": databaseURL}
+	if _, _, err := run(t, []string{"seed"}, vars); err != nil {
+		t.Fatal(err)
+	}
+
+	listed, _, err := run(t, []string{"accounts", "list"}, vars)
+	if err != nil {
+		t.Fatalf("accounts list error = %v", err)
+	}
+	accountID, _, _ := strings.Cut(listed, " ")
+	issued, _, err := run(t, []string{"keys", "create", "--account", accountID, "--name", "admin", "--scopes", "admin"}, vars)
+	if err != nil {
+		t.Fatalf("keys create error = %v", err)
+	}
+
+	_, after, found := strings.Cut(issued, "token:  ")
+	token, _, _ := strings.Cut(after, "\n")
+	db, err := store.Open(t.Context(), databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	principal, err := accounts.NewService(db).Authenticate(t.Context(), token)
+	if !found || err != nil || principal.AccountID.String() != accountID || !principal.Has(accounts.ScopeAdmin) {
+		t.Errorf("issued %q authenticates as %+v, %v; want an admin key of %s", issued, principal, err, accountID)
+	}
+}
+
+func TestKeysAndAccountsRejectInvalidArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"accounts"},
+		{"accounts", "delete"},
+		{"keys"},
+		{"keys", "create", "--account", "rudolfo", "--name", "admin", "--scopes", "admin"},
+		{"keys", "create", "--account", "019a0000-0000-7000-8000-000000000000", "--scopes", "admin"},
+	} {
+		_, _, err := run(t, args, nil)
+		if !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("Run(%v) error = %v, want usage error", args, err)
+		}
 	}
 }
