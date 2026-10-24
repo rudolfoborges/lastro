@@ -50,7 +50,7 @@ type oauthEnv struct {
 	client   *http.Client
 }
 
-func newOAuthEnv(t *testing.T) *oauthEnv {
+func newOAuthEnv(t *testing.T, options ...func(*oauth.Config)) *oauthEnv {
 	t.Helper()
 	db, err := store.Open(t.Context(), storetest.MigratedDatabaseURL(t))
 	if err != nil {
@@ -64,13 +64,18 @@ func newOAuthEnv(t *testing.T) *oauthEnv {
 	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	accountsService := accounts.NewService(db)
 	fetcher := &stubFetcher{}
-	authorization := oauth.New(db, accountsService, logger, oauth.Config{
-		Issuer:        issuer,
-		RedirectHosts: []string{"chatgpt.com"},
-		MetadataHosts: []string{"chatgpt.com"},
-		AllowLoopback: true,
-		Fetcher:       fetcher,
-	})
+	cfg := oauth.Config{
+		Issuer:              issuer,
+		RedirectHosts:       []string{"chatgpt.com"},
+		MetadataHosts:       []string{"chatgpt.com"},
+		DynamicRegistration: true,
+		AllowLoopback:       true,
+		Fetcher:             fetcher,
+	}
+	for _, option := range options {
+		option(&cfg)
+	}
+	authorization := oauth.New(db, accountsService, logger, cfg)
 	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledger.NewService(db), Logger: logger})
 	server.Config.Handler = httpapi.NewHandler(httpapi.Deps{
 		Logger: logger, Database: db, Accounts: accountsService, RateLimits: config.RateLimits{},
@@ -209,6 +214,38 @@ func TestDiscoveryDocumentsDescribeTheAuthorizationServer(t *testing.T) {
 	res := e.post("/mcp", url.Values{})
 	if res.status != http.StatusUnauthorized || !strings.Contains(res.header.Get("WWW-Authenticate"), `resource_metadata="`+e.base+`/.well-known/oauth-protected-resource"`) {
 		t.Errorf("/mcp without token = %d %q", res.status, res.header.Get("WWW-Authenticate"))
+	}
+}
+
+func TestDynamicClientRegistrationIsOffUnlessConfigured(t *testing.T) {
+	off := newOAuthEnv(t, func(cfg *oauth.Config) { cfg.DynamicRegistration = false })
+	on := newOAuthEnv(t)
+
+	if _, advertised := off.getJSON("/.well-known/oauth-authorization-server")["registration_endpoint"]; advertised {
+		t.Error("the metadata advertises registration while it is off")
+	}
+	res, err := http.Post(off.base+"/oauth/register", "application/json", strings.NewReader(`{"redirect_uris":["`+chatGPTRedirect+`"]}`)) //nolint:noctx // test helper
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("registering while off = %d, want 404", res.StatusCode)
+	}
+	if on.getJSON("/.well-known/oauth-authorization-server")["registration_endpoint"] != on.base+"/oauth/register" {
+		t.Error("the metadata does not advertise registration while it is on")
+	}
+}
+
+func TestAClientThatAsksForNoScopeIsOfferedEveryScope(t *testing.T) {
+	e := newOAuthEnv(t)
+	query := e.authorizeQuery(chatGPTClientID, chatGPTRedirect)
+	query.Del("scope")
+
+	page := e.get("/oauth/authorize?" + query.Encode())
+
+	if page.status != http.StatusOK || !strings.Contains(string(page.body), `value="statements:write"`) {
+		t.Errorf("consent page = %d, want statements:write offered", page.status)
 	}
 }
 

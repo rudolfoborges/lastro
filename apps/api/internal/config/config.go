@@ -41,8 +41,9 @@ type Config struct {
 }
 
 type OAuth struct {
-	RedirectHosts []string
-	MetadataHosts []string
+	RedirectHosts       []string
+	MetadataHosts       []string
+	DynamicRegistration bool
 }
 
 type RateLimits struct {
@@ -64,8 +65,9 @@ func Load(getenv func(string) string) (Config, error) {
 		},
 		TrustProxyHeaders: r.boolean("TRUST_PROXY_HEADERS", false),
 		OAuth: OAuth{
-			RedirectHosts: r.hosts("OAUTH_REDIRECT_HOSTS", []string{"chatgpt.com"}),
-			MetadataHosts: r.hosts("OAUTH_METADATA_HOSTS", []string{"chatgpt.com"}),
+			RedirectHosts:       r.hosts("OAUTH_REDIRECT_HOSTS", []string{"chatgpt.com"}),
+			MetadataHosts:       r.hosts("OAUTH_METADATA_HOSTS", []string{"chatgpt.com"}),
+			DynamicRegistration: r.boolean("OAUTH_DYNAMIC_REGISTRATION", false),
 		},
 	}
 	cfg.PublicBaseURL = r.baseURL("PUBLIC_BASE_URL", cfg.Environment, cfg.Port)

@@ -70,6 +70,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `PUBLIC_BASE_URL` | in production | `http://localhost:$PORT` | Public origin (`https://lastro.code04.dev`): the OAuth issuer, and `$PUBLIC_BASE_URL/mcp` is the resource tokens are bound to |
 | `OAUTH_REDIRECT_HOSTS` | no | `chatgpt.com` | Hosts OAuth clients may redirect to (HTTPS only; `localhost` is also accepted outside production) |
 | `OAUTH_METADATA_HOSTS` | no | `chatgpt.com` | Hosts allowed to serve client ID metadata documents (CIMD) |
+| `OAUTH_DYNAMIC_REGISTRATION` | no | `false` | Serves dynamic client registration (`/oauth/register`) and advertises it in the metadata; ChatGPT uses CIMD instead |
 
 ## HTTP endpoints
 
@@ -78,7 +79,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `/mcp` | any key or OAuth token | MCP over Streamable HTTP (stateless, JSON responses); each tool checks its own scope |
 | `GET /.well-known/oauth-protected-resource` | none | Protected resource metadata for `/mcp` (RFC 9728) |
 | `GET /.well-known/oauth-authorization-server` | none | Authorization server metadata (RFC 8414) |
-| `POST /oauth/register` | none | Dynamic client registration (RFC 7591) |
+| `POST /oauth/register` | none | Dynamic client registration (RFC 7591), only when `OAUTH_DYNAMIC_REGISTRATION` is on |
 | `GET`/`POST /oauth/authorize` | admin key in the form | Consent page and decision (authorization code + PKCE S256) |
 | `POST /oauth/token` | client | Authorization code and refresh token grants |
 | `POST /oauth/revoke` | client | Revokes the grant of a token (RFC 7009) |
@@ -341,7 +342,7 @@ They need `TEST_DATABASE_URL` pointing at a Postgres server where the user can c
 ChatGPT, where Case runs, only connects to MCP servers through OAuth 2.1, so Lastro is its own authorization server (`internal/oauth`). There is no password: Rudolfo proves the account is his by pasting his `admin` API key on the consent page.
 
 1. ChatGPT calls `/mcp`, gets `401` with `WWW-Authenticate: Bearer …, resource_metadata="…/.well-known/oauth-protected-resource"` and discovers the authorization server.
-2. It identifies itself with a **client ID metadata document** (CIMD, `client_id=https://chatgpt.com/oauth/client.json`), fetched over HTTPS from an allowed host with a timeout, a size cap, no redirects and no private addresses, and cached for an hour. **Dynamic client registration** (`/oauth/register`) is the fallback; it only accepts redirect URIs on `OAUTH_REDIRECT_HOSTS`.
+2. It identifies itself with a **client ID metadata document** (CIMD, `client_id=https://chatgpt.com/oauth/client.json`), fetched over HTTPS from an allowed host with a timeout, a size cap, no redirects and no private addresses, and cached for an hour. **Dynamic client registration** (`/oauth/register`) is off by default because ChatGPT connects with CIMD (#83 Q5: production logs show no registration since the first connection); turn it on with `OAUTH_DYNAMIC_REGISTRATION=true` if ChatGPT ever falls back to it. It only accepts redirect URIs on `OAUTH_REDIRECT_HOSTS`. A client that asks for no scope is offered every scope, `statements:write` included, and Rudolfo can uncheck any of them on the consent page.
 3. `/oauth/authorize` validates client, exact redirect URI, `response_type=code`, PKCE `S256` and `resource`, then shows the consent page (pt-BR, no framing, strict CSP). Rudolfo pastes the admin key and picks the scopes; the server creates a **grant** bound to the account and redirects with `code`, `state` and `iss` (RFC 9207).
 4. `/oauth/token` exchanges the code (single use, one minute, PKCE verified; a replayed code revokes the grant) for an access token (`lat_…`, one hour) and a refresh token (`lrt_…`, 30 days). Refresh tokens rotate; reusing an old one revokes the whole grant.
 5. Access tokens only work on `/mcp` (their audience); `/v1` keeps accepting API keys only. Grants are listed and revoked with the admin key at `/v1/oauth/grants`; revoking the admin key that authorized a grant revokes the grant too.

@@ -35,10 +35,11 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 	ledgerService := ledger.NewService(db)
 	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledgerService, Logger: logger})
 	authorization := oauth.New(db, accountsService, logger, oauth.Config{
-		Issuer:        cfg.PublicBaseURL,
-		RedirectHosts: cfg.OAuth.RedirectHosts,
-		MetadataHosts: cfg.OAuth.MetadataHosts,
-		AllowLoopback: cfg.Environment != config.Production,
+		Issuer:              cfg.PublicBaseURL,
+		RedirectHosts:       cfg.OAuth.RedirectHosts,
+		MetadataHosts:       cfg.OAuth.MetadataHosts,
+		DynamicRegistration: cfg.OAuth.DynamicRegistration,
+		AllowLoopback:       cfg.Environment != config.Production,
 	})
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", cfg.Port),

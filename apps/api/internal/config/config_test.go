@@ -138,9 +138,9 @@ func TestPublicBaseURLIsRequiredInProductionAndMustBeAnOrigin(t *testing.T) {
 		})
 	}
 
-	vars := map[string]string{"DATABASE_URL": "postgres://localhost/lastro", "LASTRO_ENV": "production", "PUBLIC_BASE_URL": "https://lastro.code04.dev/", "OAUTH_REDIRECT_HOSTS": "chatgpt.com, Example.com"}
+	vars := map[string]string{"DATABASE_URL": "postgres://localhost/lastro", "LASTRO_ENV": "production", "PUBLIC_BASE_URL": "https://lastro.code04.dev/", "OAUTH_REDIRECT_HOSTS": "chatgpt.com, Example.com", "OAUTH_DYNAMIC_REGISTRATION": "true"}
 	cfg, err = config.Load(func(key string) string { return vars[key] })
-	if err != nil || cfg.PublicBaseURL.String() != "https://lastro.code04.dev" || cfg.OAuth.RedirectHosts[1] != "example.com" {
+	if err != nil || cfg.PublicBaseURL.String() != "https://lastro.code04.dev" || cfg.OAuth.RedirectHosts[1] != "example.com" || !cfg.OAuth.DynamicRegistration {
 		t.Errorf("production = %+v, %v", cfg, err)
 	}
 }
