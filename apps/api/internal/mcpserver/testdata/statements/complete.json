@@ -1,0 +1,145 @@
+{
+  "issuer": "Banco Exemplo",
+  "card_last4": "1234",
+  "closing_date": "2026-10-03",
+  "due_date": "2026-10-10",
+  "issue_date": "2026-10-03",
+  "period_start": "2026-09-04",
+  "period_end": "2026-10-03",
+  "total": "957.45",
+  "previous_balance": "1500.00",
+  "reading": "complete",
+  "page_count": 4,
+  "items": [
+    {
+      "kind": "payment",
+      "original_description": "PAGAMENTO EFETUADO",
+      "amount": "1500.00",
+      "date": "2026-09-10",
+      "page": 1,
+      "excerpt": "10/09 PAGAMENTO EFETUADO -1.500,00"
+    },
+    {
+      "kind": "purchase",
+      "original_description": "PADARIA EXEMPLO",
+      "description": "Padaria",
+      "merchant": "Padaria Exemplo",
+      "amount": "32.97",
+      "date": "2026-09-14",
+      "page": 2,
+      "excerpt": "14/09 PADARIA EXEMPLO 32,97",
+      "category": "meals"
+    },
+    {
+      "kind": "purchase",
+      "original_description": "PADARIA EXEMPLO",
+      "description": "Padaria",
+      "merchant": "Padaria Exemplo",
+      "amount": "32.97",
+      "date": "2026-09-14",
+      "page": 2,
+      "excerpt": "14/09 PADARIA EXEMPLO 32,97",
+      "category": "meals"
+    },
+    {
+      "kind": "installment",
+      "original_description": "LOJA DE MOVEIS 03/10",
+      "amount": "100.00",
+      "date": "2026-07-02",
+      "installment_number": 3,
+      "installment_count": 10,
+      "page": 2,
+      "excerpt": "02/07 LOJA DE MOVEIS 03/10 100,00",
+      "category": "home"
+    },
+    {
+      "kind": "purchase",
+      "original_description": "POSTO EXEMPLO",
+      "description": "Combustível",
+      "amount": "200.00",
+      "date": "2026-09-22",
+      "card_last4": "5678",
+      "page": 2,
+      "excerpt": "22/09 POSTO EXEMPLO 200,00",
+      "category": "fuel"
+    },
+    {
+      "kind": "purchase",
+      "original_description": "EXAMPLE SOFTWARE INC",
+      "description": "Assinatura de software",
+      "amount": "110.00",
+      "original_amount": "20.00",
+      "original_currency": "USD",
+      "date": "2026-09-20",
+      "page": 3,
+      "excerpt": "20/09 EXAMPLE SOFTWARE INC USD 20,00 110,00",
+      "category": "software_subscriptions"
+    },
+    {
+      "kind": "tax",
+      "original_description": "IOF COMPRA INTERNACIONAL",
+      "amount": "3.85",
+      "date": "2026-09-20",
+      "page": 3,
+      "excerpt": "20/09 IOF COMPRA INTERNACIONAL 3,85",
+      "category": "financial_charges"
+    },
+    {
+      "kind": "pix_installment",
+      "original_description": "PIX PARCELADO 02/12",
+      "amount": "500.00",
+      "date": "2026-08-10",
+      "installment_number": 2,
+      "installment_count": 12,
+      "page": 3,
+      "excerpt": "10/08 PIX PARCELADO 02/12 500,00 (PRINCIPAL 450,00 JUROS 50,00)",
+      "components": [
+        { "kind": "principal", "amount": "450.00", "included": true },
+        { "kind": "interest", "amount": "50.00", "included": true }
+      ]
+    },
+    {
+      "kind": "fee",
+      "original_description": "ANUIDADE 05/12",
+      "amount": "25.00",
+      "installment_number": 5,
+      "installment_count": 12,
+      "page": 3,
+      "excerpt": "ANUIDADE 05/12 25,00",
+      "category": "financial_charges"
+    },
+    {
+      "kind": "refund",
+      "original_description": "ESTORNO LOJA EXEMPLO",
+      "amount": "30.00",
+      "date": "2026-09-25",
+      "page": 3,
+      "excerpt": "25/09 ESTORNO LOJA EXEMPLO -30,00"
+    },
+    {
+      "kind": "credit",
+      "original_description": "CASHBACK",
+      "amount": "5.00",
+      "date": "2026-10-01",
+      "page": 3,
+      "excerpt": "01/10 CASHBACK -5,00"
+    },
+    {
+      "kind": "unknown",
+      "original_description": "AJ CRED 0001",
+      "amount": "12.34",
+      "direction": "credit",
+      "date": "2026-09-28",
+      "page": 4,
+      "excerpt": "28/09 AJ CRED 0001 -12,34",
+      "question": "O que é o crédito \"AJ CRED 0001\" de R$ 12,34 em 28/09?"
+    }
+  ],
+  "reading_doubts": [
+    {
+      "page": 4,
+      "excerpt": "Encargos do rotativo: consulte a tabela",
+      "question": "A tabela de encargos do rotativo na página 4 é só informativa?"
+    }
+  ]
+}

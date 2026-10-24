@@ -1,0 +1,296 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "card_last4": {
+      "description": "last 4 digits of the holder's card",
+      "type": "string"
+    },
+    "closing_date": {
+      "description": "closing date printed on the statement, YYYY-MM-DD",
+      "type": "string"
+    },
+    "currency": {
+      "description": "ISO 4217 code of the statement, BRL when omitted",
+      "enum": [
+        "ARS",
+        "AUD",
+        "BRL",
+        "CAD",
+        "CHF",
+        "CLP",
+        "CNY",
+        "COP",
+        "EUR",
+        "GBP",
+        "JPY",
+        "KRW",
+        "MXN",
+        "PEN",
+        "PYG",
+        "USD",
+        "UYU"
+      ],
+      "type": "string"
+    },
+    "due_date": {
+      "description": "due date printed on the statement, YYYY-MM-DD",
+      "type": "string"
+    },
+    "file_sha256": {
+      "description": "SHA-256 of the PDF in hexadecimal, only if you can compute it",
+      "type": "string"
+    },
+    "issue_date": {
+      "description": "issue date, when printed",
+      "type": "string"
+    },
+    "issuer": {
+      "description": "card issuer as printed, such as the bank name",
+      "type": "string"
+    },
+    "items": {
+      "description": "every line of the statement, in the order printed",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "description": "amount of the line in the statement currency, as a positive canonical decimal such as 32.97; kind says whether it adds or subtracts",
+            "type": "string"
+          },
+          "card_last4": {
+            "description": "last 4 digits of the card of this line when it is not the holder's (additional or virtual card)",
+            "type": "string"
+          },
+          "category": {
+            "description": "suggested category code from list_categories",
+            "type": "string"
+          },
+          "components": {
+            "description": "principal, interest, IOF and fee of the line, only when the statement details them",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "description": "canonical decimal in the statement currency",
+                  "type": "string"
+                },
+                "included": {
+                  "description": "true when this amount is part of the item amount; false when it is charged apart in another line",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "principal, interest, iof or fee",
+                  "enum": [
+                    "principal",
+                    "interest",
+                    "iof",
+                    "fee"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "amount",
+                "included"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "confirm_distinct": {
+            "description": "true when a possible_match candidate is a different purchase",
+            "type": "boolean"
+          },
+          "date": {
+            "description": "date printed on the line, YYYY-MM-DD; take the year from the statement cycle",
+            "type": "string"
+          },
+          "description": {
+            "description": "short readable description in Portuguese; the original description when omitted",
+            "type": "string"
+          },
+          "direction": {
+            "description": "only for adjustment and unknown: debit when the line adds to the total, credit when it subtracts",
+            "enum": [
+              "debit",
+              "credit"
+            ],
+            "type": "string"
+          },
+          "excerpt": {
+            "description": "the text of the line exactly as printed, so Rudolfo can find it in his PDF",
+            "type": "string"
+          },
+          "installment_count": {
+            "description": "N of n/N",
+            "type": "integer"
+          },
+          "installment_number": {
+            "description": "n of n/N; required for installment and pix_installment",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "what the line is; previous balance goes in previous_balance, not here",
+            "enum": [
+              "purchase",
+              "installment",
+              "pix_installment",
+              "interest",
+              "fee",
+              "tax",
+              "credit",
+              "refund",
+              "payment",
+              "adjustment",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "merchant": {
+            "description": "store or payee, only when the line shows it",
+            "type": "string"
+          },
+          "original_amount": {
+            "description": "amount in the foreign currency, for international lines",
+            "type": "string"
+          },
+          "original_currency": {
+            "description": "ISO 4217 code of original_amount",
+            "enum": [
+              "ARS",
+              "AUD",
+              "BRL",
+              "CAD",
+              "CHF",
+              "CLP",
+              "CNY",
+              "COP",
+              "EUR",
+              "GBP",
+              "JPY",
+              "KRW",
+              "MXN",
+              "PEN",
+              "PYG",
+              "USD",
+              "UYU"
+            ],
+            "type": "string"
+          },
+          "original_description": {
+            "description": "the description exactly as printed on the line",
+            "type": "string"
+          },
+          "page": {
+            "description": "page of the PDF where the line is printed, starting at 1",
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "only when Rudolfo told you why",
+            "type": "string"
+          },
+          "question": {
+            "description": "for unknown: what to ask Rudolfo, in Portuguese",
+            "type": "string"
+          },
+          "refund_of_id": {
+            "description": "for refund: the purchase it returns money from",
+            "type": "string"
+          },
+          "related_transaction_id": {
+            "description": "existing transaction that is this same charge (from the conversation or a notification)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "original_description",
+          "amount",
+          "page",
+          "excerpt"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "missing": {
+      "description": "for a partial reading: what you could not read, in Portuguese",
+      "type": "string"
+    },
+    "page_count": {
+      "description": "number of pages of the PDF",
+      "type": "integer"
+    },
+    "period_end": {
+      "description": "last day of the cycle, when printed",
+      "type": "string"
+    },
+    "period_start": {
+      "description": "first day of the cycle, when printed",
+      "type": "string"
+    },
+    "previous_balance": {
+      "description": "total of the previous statement as printed in the summary, when shown",
+      "type": "string"
+    },
+    "reading": {
+      "description": "complete when you read every line of every page; partial otherwise",
+      "enum": [
+        "complete",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "reading_doubts": {
+      "description": "passages you could not interpret safely",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "description": "the text you could not read safely, as printed",
+            "type": "string"
+          },
+          "page": {
+            "description": "page of the PDF, starting at 1",
+            "type": "integer"
+          },
+          "question": {
+            "description": "what to ask Rudolfo, in Portuguese",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "excerpt",
+          "question"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
+    "total": {
+      "description": "total of this statement as printed, canonical decimal; negative only for a credit balance",
+      "type": "string"
+    }
+  },
+  "required": [
+    "issuer",
+    "card_last4",
+    "closing_date",
+    "due_date",
+    "total",
+    "reading",
+    "items"
+  ],
+  "type": "object"
+}
