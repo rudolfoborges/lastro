@@ -353,6 +353,10 @@ func (s *Service) RevokeKey(ctx context.Context, accountID, keyID uuid.UUID) (AP
 		if err != nil {
 			return fmt.Errorf("revoke API key: %w", err)
 		}
+		err = q.RevokeOAuthGrantsAuthorizedByKey(ctx, tenantdb.RevokeOAuthGrantsAuthorizedByKeyParams{AccountID: accountID, ApiKeyID: keyID})
+		if err != nil {
+			return fmt.Errorf("revoke OAuth grants of the API key: %w", err)
+		}
 		revoked = fromTenantKey(row)
 		return nil
 	})
