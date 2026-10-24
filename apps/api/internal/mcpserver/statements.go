@@ -112,7 +112,7 @@ type ItemCandidatesOutput struct {
 
 type SubmitStatementExtractionOutput struct {
 	Outcome        Outcome                `json:"outcome"`
-	Result         string                 `json:"result" jsonschema:"recorded, new_version (a different reading of a statement already recorded), previewed (dry_run: nothing recorded), already_recorded or possible_match"`
+	Result         string                 `json:"result" jsonschema:"recorded, new_version (a different reading of a statement already recorded), installments_planned (the same reading again gave installment lines recorded before installment plans their purchase and plan), previewed (dry_run: nothing recorded, whatever the reading would do), already_recorded (nothing changed) or possible_match"`
 	Statement      *StatementOutput       `json:"statement,omitempty"`
 	Review         *StatementReviewOutput `json:"review,omitempty" jsonschema:"composition, computed total and status of the statement"`
 	Diff           *StatementDiffOutput   `json:"diff,omitempty" jsonschema:"for a new version: what changed since the previous one"`
@@ -685,6 +685,8 @@ func statementSummary(submission ledger.StatementSubmission) string {
 		return fmt.Sprintf("Nada foi registrado: %d item(ns) podem ser cobranças já registradas pela conversa ou por notificação. Para cada um, envie de novo a leitura inteira com related_transaction_id (mesma compra) ou confirm_distinct (outra compra); pergunte a Rudolfo se não tiver certeza.", len(submission.Candidates))
 	case ledger.StatementAlreadyRecorded:
 		return "Esta leitura da fatura já estava registrada; nada mudou. " + reviewSummary(*submission.Review)
+	case ledger.StatementPlanned:
+		return fmt.Sprintf("Esta leitura da fatura já estava registrada. %d linha(s) de parcela ganharam a compra e o plano de parcelamento; nenhum outro lançamento mudou. %s", submission.Planned, reviewSummary(*submission.Review))
 	case ledger.StatementNewVersion:
 		diff := submission.Diff
 		return fmt.Sprintf("A fatura já estava registrada e esta leitura é diferente: virou a versão %d. %d linha(s) nova(s), %d removida(s) e %d alterada(s); nenhum lançamento foi duplicado e as diferenças viraram dúvidas para Rudolfo conferir. %s",
@@ -694,6 +696,9 @@ func statementSummary(submission ledger.StatementSubmission) string {
 	counts := map[ledger.InterpretationEffect]int{}
 	for _, line := range submission.Lines {
 		counts[line.Effect]++
+	}
+	if submission.Result == ledger.StatementPreviewed && submission.Planned > 0 {
+		return fmt.Sprintf("Simulação, nada foi gravado. Esta leitura já está registrada; enviada sem dry_run, %d linha(s) de parcela ganhariam a compra e o plano de parcelamento. %s", submission.Planned, reviewSummary(*submission.Review))
 	}
 	verb := "Registrei"
 	if submission.Result == ledger.StatementPreviewed {

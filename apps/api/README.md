@@ -272,7 +272,7 @@ A notification version is pending while its observation has no interpretation. C
 
 Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statement_extraction` (`ledger.Service.SubmitStatement`) with the structured reading. **The PDF never reaches the server.** The contract is published as JSON Schema in [`docs/statement-extraction.schema.json`](docs/statement-extraction.schema.json) (kept in sync by a test; regenerate with `UPDATE_SCHEMAS=1`), and a synthetic reading lives in `internal/mcpserver/testdata/statements/complete.json`.
 
-- **Identity:** issuer (compared without case, accents or punctuation), the holder's card last 4 digits and the closing date. The same reading again (same metadata and the same lines, in any order) answers `already_recorded` and writes nothing.
+- **Identity:** issuer (compared without case, accents or punctuation), the holder's card last 4 digits and the closing date. The same reading again (same metadata and the same lines, in any order) answers `already_recorded` and writes nothing, except for installment lines recorded before installment plans existed, which get their purchase and plan (`installments_planned`).
 - **Versions (#37):** a different reading of the same statement answers `new_version` and becomes version N+1, never a second statement. Lines are compared by identity:
   - **Kept lines** reuse their observation and transaction.
   - **Added lines** go through the normal effects, including `possible_match`.
@@ -289,7 +289,7 @@ Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statem
   - **Status:** `read_incomplete` (partial reading, unknown lines or open reading doubts), `divergent` (a difference) or `reconciled`. Reconciled never means paid.
   - **Unmatched purchases:** open credit card purchases from the conversation or Google Wallet, on the statement's cards and dated within the cycle (`period_start`, or 30 days before closing, up to the closing date), that no statement line confirmed. They are listed in `unmatched` and in `pending` (`unmatched_purchases`) without changing the status, and stay provisional.
   - **Where it appears:** every submission answer carries the review, and `get_statement_review` answers "what is left to check" for the latest statement or a closing date. `get_statement_line_source` returns the page and the excerpt of a line by transaction or by index, and `list_clarifications` filters by `statement_id`.
-  - **Dry run:** with `dry_run: true` the reading runs inside a transaction that is rolled back, and the answer is `previewed` with the same review.
+  - **Dry run:** with `dry_run: true` the reading runs inside a transaction that is always rolled back, whatever the result, and the answer is `previewed` (or `already_recorded` when nothing would change) with the same review.
 - **Lines already recorded elsewhere:** a `purchase` or `refund` without `related_transaction_id` is checked against open transactions of the same nature with the same amount (or the same original amount for international lines), within five days of the line date and not yet charged by a statement line, paid by credit card or with no payment method. If any item has candidates, nothing is written and the answer is `possible_match`, with the candidates per item. Case resends the whole reading deciding each item: `related_transaction_id` links the line, fills what is missing (card, merchant, date, installments, the amount when it differs in the same currency) and confirms the transaction; `confirm_distinct` creates a new one. A transaction already charged by a statement line cannot be linked to another line, except installments.
 
 ### Installment plans
@@ -309,7 +309,7 @@ A purchase in installments has one row in `installment_plans` (#40): modality (`
   - **Not projected:** installments charged before Lastro saw the plan.
 - **Corrections:** Rudolfo's amount on an `installment`-basis purchase becomes its total (`amount_basis` back to `total`) and the plan's total. Changing the count is refused below the last charged installment, and clearing it is refused once a statement charged one.
 - **Merges** carry the plan to the survivor, or fill the survivor's plan (total, known installment amount; the same count is required) and cancel the merged one; `undo_match` restores both.
-- **Earlier statements:** installment lines recorded before plans existed get their purchase and plan when the same reading is sent again (`already_recorded`), or when a new version keeps them.
+- **Earlier statements:** installment lines recorded before plans existed get their purchase and plan when the same reading is sent again (`installments_planned`; a dry run only previews it), or when a new version keeps them.
 - `get_transaction` returns the plan with each installment (`charged`, `known_future`, `estimated`), the charged amount, its breakdown and the remaining commitment.
 
 ### Refunds and currencies

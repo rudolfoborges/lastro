@@ -62,7 +62,7 @@ Every "n/N" line (`installment`, `pix_installment`) is one installment of a purc
 - **Chained by Lastro:** when the card, the printed description, N and the amount match exactly one plan whose installment n−1 was charged in an earlier statement, Lastro links the line to that purchase by itself (`linked`).
 - **Your decision:** otherwise, when there are plans or purchases that may be the same one, such as a TV Rudolfo told you he bought "em 12x de 100", Lastro answers `possible_match`. Use `related_transaction_id` for the same purchase, `confirm_distinct` for another, or `defer_match` when only Rudolfo can tell.
 - **A purchase seen only on the statement:** Lastro creates it from the line (`created`). The purchase date is the line date, and `amount_basis` is `installment`: only the installment amount is known, and the total is **never** multiplied out. Its plan estimates the next installments from the one charged. When Rudolfo tells the total, correct the amount with `update_transaction`; it becomes the total of the plan.
-- **Statements recorded before installment plans existed** kept their installment lines without a purchase. Sending the same reading again (`already_recorded`) gives those lines their purchase and plan.
+- **Statements recorded before installment plans existed** kept their installment lines without a purchase. Sending the same reading again gives those lines their purchase and plan (`installments_planned`).
 
 **Pix parcelado** (`pix_installment`) is a payment made by Pix and financed on the card; its modality is kept apart from the category and the purpose. Send `purpose` when Rudolfo told you; otherwise Lastro asks him what it was for (goods or services, a transfer or a refinancing). If he says it was a transfer or a refinancing, correct the nature with `update_transaction`. When the statement does not detail principal and interest of a Pix installment, Lastro keeps the amount whole and asks once per plan.
 
@@ -75,7 +75,7 @@ Every "n/N" line (`installment`, `pix_installment`) is one installment of a purc
 
 ## Check before recording
 
-Send the reading first with `dry_run: true`. Lastro validates it, matches it against what is already recorded and returns the review (composition, computed total and status) without recording anything (`result: "previewed"`). If the computed total does not match the printed total, look for a missing or misread line before recording: a difference usually means your reading is wrong, not the bank. Then send the same reading without `dry_run`.
+Send the reading first with `dry_run: true`. Lastro validates it, matches it against what is already recorded and returns the review (composition, computed total and status) without recording anything (`result: "previewed"`), whatever the reading would do. If the computed total does not match the printed total, look for a missing or misread line before recording: a difference usually means your reading is wrong, not the bank. Then send the same reading without `dry_run`.
 
 ## Purchases already recorded
 
@@ -92,6 +92,7 @@ You may also link any line (installments and charges too) to a transaction you a
 - `recorded`: done. Each line says its `effect`: `created` (a new transaction, including a purchase seen only through its installment), `linked` (an existing one, now confirmed, or the next installment of a plan) or `none` (kept only in the statement: unknown lines).
 - `previewed`: the dry run passed; nothing was recorded.
 - `already_recorded`: you had sent the same reading before; nothing changed.
+- `installments_planned`: you had sent the same reading before, and its installment lines recorded before installment plans existed got their purchase and plan (`planned` lines have effect `created` or `linked`); nothing else changed.
 - `new_version`: the statement was already recorded and this reading differs. `diff` lists the lines added, removed and changed and the summary fields that changed. Nothing is duplicated:
   - a changed line corrects the same transaction (except what Rudolfo confirmed, which becomes a question);
   - a removed line keeps its transaction and opens a question;

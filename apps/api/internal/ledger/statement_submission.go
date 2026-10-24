@@ -50,11 +50,13 @@ func (s *Service) SubmitStatement(ctx context.Context, accountID uuid.UUID, in S
 		sub := &statementSubmitter{t: t, in: in, identities: itemIdentities(in), loc: loc, actor: actor, receivedAt: receivedAt}
 		out, err = sub.run()
 		out.Location = loc
-		if err == nil && in.DryRun && (out.Result == StatementRecorded || out.Result == StatementNewVersion) {
-			out.Result = StatementPreviewed
-			return errDryRun
+		if err != nil || !in.DryRun {
+			return err
 		}
-		return err
+		if out.Result == StatementRecorded || out.Result == StatementNewVersion || out.Result == StatementPlanned {
+			out.Result = StatementPreviewed
+		}
+		return errDryRun
 	})
 	if errors.Is(err, errDryRun) {
 		return out, nil
@@ -134,48 +136,64 @@ func (s *statementSubmitter) resubmitted(statement tenantdb.Statement, hash []by
 	if !bytes.Equal(version.ContentHash, hash) {
 		return s.newVersion(statement, version, hash)
 	}
-	if err := s.planInstallments(statement); err != nil {
+	planned, err := s.planInstallments(statement)
+	if err != nil {
 		return StatementSubmission{}, err
 	}
 	lines, err := s.t.statementLines(version.ID)
 	if err != nil {
 		return StatementSubmission{}, err
 	}
-	return s.submission(StatementAlreadyRecorded, statement, version, lines)
+	if len(planned) == 0 {
+		return s.submission(StatementAlreadyRecorded, statement, version, lines)
+	}
+	for i, line := range lines {
+		if effect, ok := planned[line.ObservationID]; ok {
+			lines[i].Effect = effect
+		}
+	}
+	out, err := s.submission(StatementPlanned, statement, version, lines)
+	out.Planned = len(planned)
+	return out, err
 }
 
 // planInstallments gives installment lines recorded before installment plans
-// existed their purchase and plan when the same reading is sent again.
-func (s *statementSubmitter) planInstallments(statement tenantdb.Statement) error {
+// existed their purchase and plan when the same reading is sent again, and
+// returns the effect on each line it changed.
+func (s *statementSubmitter) planInstallments(statement tenantdb.Statement) (map[uuid.UUID]InterpretationEffect, error) {
+	planned := map[uuid.UUID]InterpretationEffect{}
 	for i, item := range s.in.Items {
 		if !item.Kind.installment() {
 			continue
 		}
 		observation, err := s.t.q.GetObservationBySourceKey(s.t.ctx, tenantdb.GetObservationBySourceKeyParams{AccountID: s.t.accountID, Source: string(SourceStatementLine), SourceKey: s.identities[i].sourceKey(statement.ID)})
 		if err != nil {
-			return fmt.Errorf("find installment line: %w", err)
+			return nil, fmt.Errorf("find installment line: %w", err)
 		}
 		transactionID, err := s.t.q.ObservationTransaction(s.t.ctx, tenantdb.ObservationTransactionParams{AccountID: s.t.accountID, ObservationID: observation.ID})
 		switch {
 		case err == nil:
 			plan, err := s.t.planRow(transactionID)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if plan == nil {
 				if err := s.charge(statement, transactionID, observation.ID, item); err != nil {
-					return prefixed(fmt.Sprintf("items[%d].", i), err)
+					return nil, prefixed(fmt.Sprintf("items[%d].", i), err)
 				}
+				planned[observation.ID] = EffectLinked
 			}
 			continue
 		case !errors.Is(err, pgx.ErrNoRows):
-			return fmt.Errorf("transaction of an installment line: %w", err)
+			return nil, fmt.Errorf("transaction of an installment line: %w", err)
 		}
-		if _, err := s.installment(statement, observation.ID, item, false); err != nil {
-			return prefixed(fmt.Sprintf("items[%d].", i), err)
+		line, err := s.installment(statement, observation.ID, item, false)
+		if err != nil {
+			return nil, prefixed(fmt.Sprintf("items[%d].", i), err)
 		}
+		planned[observation.ID] = line.Effect
 	}
-	return nil
+	return planned, nil
 }
 
 func (s *statementSubmitter) insertVersion(statementID uuid.UUID, number int32, hash []byte) (tenantdb.StatementVersion, error) {
