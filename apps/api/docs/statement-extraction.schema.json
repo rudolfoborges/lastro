@@ -32,6 +32,10 @@
       ],
       "type": "string"
     },
+    "dry_run": {
+      "description": "true to validate and review the reading without recording anything",
+      "type": "boolean"
+    },
     "due_date": {
       "description": "due date printed on the statement, YYYY-MM-DD",
       "type": "string"

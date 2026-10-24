@@ -35,6 +35,17 @@ WHERE c.account_id = @account_id
   AND (cardinality(@kinds::text[]) = 0 OR c.kind = ANY (@kinds::text[]))
   AND (sqlc.narg(from_date)::date IS NULL OR t.occurred_on >= sqlc.narg(from_date)::date)
   AND (sqlc.narg(to_date)::date IS NULL OR t.occurred_on <= sqlc.narg(to_date)::date)
+  AND (
+      sqlc.narg(statement_id)::uuid IS NULL
+      OR c.statement_id = sqlc.narg(statement_id)::uuid
+      OR c.transaction_id IN (
+          SELECT e.transaction_id
+          FROM statement_lines l
+          JOIN statement_versions v ON v.account_id = l.account_id AND v.id = l.statement_version_id
+          JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+          WHERE l.account_id = c.account_id AND v.statement_id = sqlc.narg(statement_id)::uuid
+      )
+  )
 ORDER BY t.occurred_on NULLS LAST, c.created_at, c.id
 LIMIT @max_rows;
 
@@ -43,9 +54,3 @@ SELECT EXISTS (
     SELECT FROM clarifications
     WHERE account_id = @account_id AND dedup_key = @dedup_key AND status = 'dismissed'
 );
-
--- name: OpenStatementClarifications :many
-SELECT *
-FROM clarifications
-WHERE account_id = @account_id AND statement_id = @statement_id AND status = 'open'
-ORDER BY created_at, id;

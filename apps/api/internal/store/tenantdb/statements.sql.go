@@ -104,6 +104,51 @@ func (q *Queries) FindStatementMatchCandidates(ctx context.Context, arg FindStat
 	return items, nil
 }
 
+const findStatementsByClosingDate = `-- name: FindStatementsByClosingDate :many
+SELECT id, account_id, issuer, issuer_key, card_last4, closing_date, payment_method_id, created_at
+FROM statements
+WHERE account_id = $1
+  AND closing_date = $2
+  AND ($3::text IS NULL OR card_last4 = $3::text)
+ORDER BY created_at
+LIMIT 5
+`
+
+type FindStatementsByClosingDateParams struct {
+	AccountID   uuid.UUID
+	ClosingDate time.Time
+	CardLast4   *string
+}
+
+func (q *Queries) FindStatementsByClosingDate(ctx context.Context, arg FindStatementsByClosingDateParams) ([]Statement, error) {
+	rows, err := q.db.Query(ctx, findStatementsByClosingDate, arg.AccountID, arg.ClosingDate, arg.CardLast4)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Statement{}
+	for rows.Next() {
+		var i Statement
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Issuer,
+			&i.IssuerKey,
+			&i.CardLast4,
+			&i.ClosingDate,
+			&i.PaymentMethodID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getObservationBySourceKey = `-- name: GetObservationBySourceKey :one
 SELECT id, account_id, source, source_key, payload, redactions, fingerprint, received_at, created_at
 FROM observations
@@ -346,6 +391,30 @@ func (q *Queries) InsertStatementVersion(ctx context.Context, arg InsertStatemen
 	return i, err
 }
 
+const latestStatement = `-- name: LatestStatement :one
+SELECT id, account_id, issuer, issuer_key, card_last4, closing_date, payment_method_id, created_at
+FROM statements
+WHERE account_id = $1
+ORDER BY closing_date DESC, created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) LatestStatement(ctx context.Context, accountID uuid.UUID) (Statement, error) {
+	row := q.db.QueryRow(ctx, latestStatement, accountID)
+	var i Statement
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.Issuer,
+		&i.IssuerKey,
+		&i.CardLast4,
+		&i.ClosingDate,
+		&i.PaymentMethodID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const latestStatementVersion = `-- name: LatestStatementVersion :one
 SELECT id, account_id, statement_id, version, issue_date, due_date, period_start, period_end, currency, informed_total_minor, previous_balance_minor, reading, missing, page_count, file_sha256, content_hash, created_at
 FROM statement_versions
@@ -478,4 +547,224 @@ func (q *Queries) LockStatementByIdentity(ctx context.Context, arg LockStatement
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const openStatementReviewClarifications = `-- name: OpenStatementReviewClarifications :many
+SELECT c.id, c.account_id, c.kind, c.transaction_id, c.observation_id, c.subject, c.dedup_key, c.question, c.context, c.status, c.resolution, c.resolved_by, c.resolved_at, c.created_at, c.updated_at, c.statement_id
+FROM clarifications c
+WHERE c.account_id = $1
+  AND c.status = 'open'
+  AND (
+      c.statement_id = $2
+      OR c.transaction_id IN (
+          SELECT e.transaction_id
+          FROM statement_lines l
+          JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+          WHERE l.account_id = $1 AND l.statement_version_id = $3
+      )
+  )
+ORDER BY c.created_at, c.id
+`
+
+type OpenStatementReviewClarificationsParams struct {
+	AccountID          uuid.UUID
+	StatementID        *uuid.UUID
+	StatementVersionID uuid.UUID
+}
+
+func (q *Queries) OpenStatementReviewClarifications(ctx context.Context, arg OpenStatementReviewClarificationsParams) ([]Clarification, error) {
+	rows, err := q.db.Query(ctx, openStatementReviewClarifications, arg.AccountID, arg.StatementID, arg.StatementVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Clarification{}
+	for rows.Next() {
+		var i Clarification
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Kind,
+			&i.TransactionID,
+			&i.ObservationID,
+			&i.Subject,
+			&i.DedupKey,
+			&i.Question,
+			&i.Context,
+			&i.Status,
+			&i.Resolution,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StatementID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statementLineAt = `-- name: StatementLineAt :one
+SELECT l.id, l.account_id, l.statement_version_id, l.observation_id, l.position, l.kind, l.direction, l.amount_minor, l.page, l.excerpt, l.details, e.transaction_id
+FROM statement_lines l
+LEFT JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+WHERE l.account_id = $1 AND l.statement_version_id = $2 AND l.position = $3
+`
+
+type StatementLineAtParams struct {
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+	Position           int32
+}
+
+type StatementLineAtRow struct {
+	ID                 uuid.UUID
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+	ObservationID      uuid.UUID
+	Position           int32
+	Kind               string
+	Direction          string
+	AmountMinor        int64
+	Page               int32
+	Excerpt            string
+	Details            []byte
+	TransactionID      *uuid.UUID
+}
+
+func (q *Queries) StatementLineAt(ctx context.Context, arg StatementLineAtParams) (StatementLineAtRow, error) {
+	row := q.db.QueryRow(ctx, statementLineAt, arg.AccountID, arg.StatementVersionID, arg.Position)
+	var i StatementLineAtRow
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.StatementVersionID,
+		&i.ObservationID,
+		&i.Position,
+		&i.Kind,
+		&i.Direction,
+		&i.AmountMinor,
+		&i.Page,
+		&i.Excerpt,
+		&i.Details,
+		&i.TransactionID,
+	)
+	return i, err
+}
+
+const statementLineTotals = `-- name: StatementLineTotals :many
+SELECT kind, direction, count(*)::int AS lines, sum(amount_minor)::bigint AS amount_minor
+FROM statement_lines
+WHERE account_id = $1 AND statement_version_id = $2
+GROUP BY kind, direction
+ORDER BY kind, direction
+`
+
+type StatementLineTotalsParams struct {
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+}
+
+type StatementLineTotalsRow struct {
+	Kind        string
+	Direction   string
+	Lines       int32
+	AmountMinor int64
+}
+
+func (q *Queries) StatementLineTotals(ctx context.Context, arg StatementLineTotalsParams) ([]StatementLineTotalsRow, error) {
+	rows, err := q.db.Query(ctx, statementLineTotals, arg.AccountID, arg.StatementVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StatementLineTotalsRow{}
+	for rows.Next() {
+		var i StatementLineTotalsRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Direction,
+			&i.Lines,
+			&i.AmountMinor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const transactionStatementLines = `-- name: TransactionStatementLines :many
+SELECT l.id, l.account_id, l.statement_version_id, l.observation_id, l.position, l.kind, l.direction, l.amount_minor, l.page, l.excerpt, l.details, v.statement_id, v.version
+FROM transaction_evidence e
+JOIN statement_lines l ON l.account_id = e.account_id AND l.observation_id = e.observation_id
+JOIN statement_versions v ON v.account_id = l.account_id AND v.id = l.statement_version_id
+WHERE e.account_id = $1
+  AND e.transaction_id = $2
+  AND e.status = 'confirmed'
+  AND v.version = (SELECT max(latest.version) FROM statement_versions latest WHERE latest.account_id = v.account_id AND latest.statement_id = v.statement_id)
+ORDER BY v.created_at, l.position
+`
+
+type TransactionStatementLinesParams struct {
+	AccountID     uuid.UUID
+	TransactionID uuid.UUID
+}
+
+type TransactionStatementLinesRow struct {
+	ID                 uuid.UUID
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+	ObservationID      uuid.UUID
+	Position           int32
+	Kind               string
+	Direction          string
+	AmountMinor        int64
+	Page               int32
+	Excerpt            string
+	Details            []byte
+	StatementID        uuid.UUID
+	Version            int32
+}
+
+func (q *Queries) TransactionStatementLines(ctx context.Context, arg TransactionStatementLinesParams) ([]TransactionStatementLinesRow, error) {
+	rows, err := q.db.Query(ctx, transactionStatementLines, arg.AccountID, arg.TransactionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TransactionStatementLinesRow{}
+	for rows.Next() {
+		var i TransactionStatementLinesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.StatementVersionID,
+			&i.ObservationID,
+			&i.Position,
+			&i.Kind,
+			&i.Direction,
+			&i.AmountMinor,
+			&i.Page,
+			&i.Excerpt,
+			&i.Details,
+			&i.StatementID,
+			&i.Version,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

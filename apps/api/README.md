@@ -274,6 +274,12 @@ Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statem
 - **All or nothing:** the reading is validated and written in one transaction. Every item needs `page` and `excerpt`, amounts are positive in the statement currency (the kind gives the direction; `adjustment` and `unknown` carry `direction`), `n/N` is coherent and the included components (principal, interest, IOF, fee) add up to the item. Errors point to the field, such as `items[3].page`.
 - **Lines:** each item becomes an observation `statement_line` whose `source_key` is the statement plus a hash of its normalized description, amount, card, date and `n/N`, plus the ordinal of identical lines, so two legitimate identical lines stay two observations. `statement_lines` keeps, per version, the kind, direction, amount, page and excerpt.
 - **Effects:** `purchase`, `interest`, `fee`, `tax`, `credit`, `refund`, `payment` and `adjustment` create a `confirmed` transaction on the line's credit card (natures `expense`, `charge`, `credit`, `refund`, `payment`, `adjustment`). `installment` and `pix_installment` stay only in the statement until installment plans exist (#40). `unknown` opens a `reading_doubt` on the line. Reading doubts open `reading_doubt` clarifications on the statement.
+- **Review (#36):**
+  - **Composition:** previous balance, purchases, installments, charges (interest, fees, taxes), payments, credits (credits and refunds), and the net of adjustments and unknown lines.
+  - **Computed total:** previous balance plus debits minus credits, always computed by the server from the stored lines. The difference with the printed total is shown in cents and never turned into an adjustment.
+  - **Status:** `read_incomplete` (partial reading, unknown lines or open reading doubts), `divergent` (a difference) or `reconciled`. Reconciled never means paid.
+  - **Where it appears:** every submission answer carries the review, and `get_statement_review` answers "what is left to check" for the latest statement or a closing date. `get_statement_line_source` returns the page and the excerpt of a line by transaction or by index, and `list_clarifications` filters by `statement_id`.
+  - **Dry run:** with `dry_run: true` the reading runs inside a transaction that is rolled back, and the answer is `previewed` with the same review.
 - **Lines already recorded elsewhere:** a `purchase` or `refund` without `related_transaction_id` is checked against open transactions of the same nature with the same amount (or the same original amount for international lines), within five days of the line date and not yet charged by a statement line, paid by credit card or with no payment method. If any item has candidates, nothing is written and the answer is `possible_match`, with the candidates per item. Case resends the whole reading deciding each item: `related_transaction_id` links the line, fills what is missing (card, merchant, date, installments, the amount when it differs in the same currency) and confirms the transaction; `confirm_distinct` creates a new one. A transaction already charged by a statement line cannot be linked to another line, except installments.
 
 ### What the app sees
@@ -371,13 +377,15 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `void_transaction` | `expenses:write` | Marks a record made by mistake as voided; nothing is deleted |
 | `get_transaction` | `expenses:read` | Transaction with categories, evidence, full history and open questions |
 | `list_transactions` | `expenses:read` | Lists by purchase period, status, category and payment method, without totals |
-| `list_clarifications` | `expenses:read` | Lists pending questions by kind, status and purchase period |
+| `list_clarifications` | `expenses:read` | Lists pending questions by kind, status, purchase period and statement |
 | `resolve_clarification` | `expenses:write` | Answers (`resolve`) or closes (`dismiss`) a question |
 | `list_pending_notifications` | `expenses:read` | Google Wallet notifications waiting for Case's interpretation, oldest first, with earlier versions |
 | `submit_notification_interpretations` | `expenses:write` | Applies Case's reading of up to 50 notification versions, each on its own |
 | `get_coverage_status` | `expenses:read` | Tracking state, gaps, pauses, late deliveries, inbox and phone status for a period of days, with the limitations to relay |
 | `set_tracking` | `expenses:write` | Turns automatic tracking on or off and sets the inbox interval, only when Rudolfo asks |
-| `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line |
+| `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line; `dry_run` reviews without recording |
+| `get_statement_review` | `expenses:read` | Composition, computed versus printed total, status and pending items of a statement |
+| `get_statement_line_source` | `expenses:read` | Page and excerpt of a statement line, by transaction or by statement and index |
 
 Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` and `submit_statement_extraction` are the exceptions: the first is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)), the second by the statement identity and the content of the reading (see [Statements](#statements)).
 

@@ -78,6 +78,68 @@ func TestCaseSubmitsAStatementReadingWithEveryLineAnchored(t *testing.T) {
 	}
 }
 
+func TestCaseReviewsWhatIsLeftToCheckOnTheLatestStatement(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))
+	submitted := callTool[mcpserver.SubmitStatementExtractionOutput](t, session, "submit_statement_extraction", statementFixture(t), nil)
+
+	got := callTool[mcpserver.GetStatementReviewOutput](t, session, "get_statement_review", map[string]any{}, nil)
+
+	review := got.out.Review
+	if got.isError || got.out.Statement.ID != submitted.out.Statement.ID || review.Status != "read_incomplete" {
+		t.Fatalf("review = %+v %s", got.out, got.text)
+	}
+	if review.Composition.ComputedTotal.Amount != "957.45" || review.Composition.Difference.Amount != "0.00" || review.Composition.Unknown.Amount.Amount != "-12.34" {
+		t.Errorf("composition = %+v", review.Composition)
+	}
+	kinds := map[string]bool{}
+	for _, pending := range review.Pending {
+		kinds[pending.Kind] = true
+	}
+	if !kinds["unknown_lines"] || !kinds["reading_doubts"] || kinds["difference"] {
+		t.Errorf("pending = %+v", review.Pending)
+	}
+	if submitted.out.Review == nil || submitted.out.Review.Status != "read_incomplete" {
+		t.Errorf("submission review = %+v", submitted.out.Review)
+	}
+	listed := callTool[mcpserver.ListClarificationsOutput](t, session, "list_clarifications", map[string]any{"statement_id": submitted.out.Statement.ID}, nil)
+	if listed.isError || listed.out.Count != 2 {
+		t.Errorf("clarifications of the statement = %+v %s", listed.out, listed.text)
+	}
+}
+
+func TestCaseLocatesAStatementLineForRudolfo(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))
+	submitted := callTool[mcpserver.SubmitStatementExtractionOutput](t, session, "submit_statement_extraction", statementFixture(t), nil)
+
+	byTransaction := callTool[mcpserver.GetStatementLineSourceOutput](t, session, "get_statement_line_source", map[string]any{"transaction_id": *submitted.out.Lines[5].TransactionID}, nil)
+	byIndex := callTool[mcpserver.GetStatementLineSourceOutput](t, session, "get_statement_line_source", map[string]any{"statement_id": submitted.out.Statement.ID, "index": 3}, nil)
+
+	if len(byTransaction.out.Sources) != 1 || byTransaction.out.Sources[0].Page != 3 || byTransaction.out.Sources[0].Excerpt != "20/09 EXAMPLE SOFTWARE INC USD 20,00 110,00" {
+		t.Errorf("by transaction = %+v %s", byTransaction.out, byTransaction.text)
+	}
+	if len(byIndex.out.Sources) != 1 || byIndex.out.Sources[0].Kind != "installment" || byIndex.out.Sources[0].Index != 3 {
+		t.Errorf("by index = %+v %s", byIndex.out, byIndex.text)
+	}
+}
+
+func TestADryRunShowsTheReviewAndRecordsNothing(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))
+	in := statementFixture(t)
+	in["dry_run"] = true
+
+	got := callTool[mcpserver.SubmitStatementExtractionOutput](t, session, "submit_statement_extraction", in, nil)
+
+	if got.isError || got.out.Result != "previewed" || got.out.Review == nil || got.out.Review.Composition.ComputedTotal.Amount != "957.45" {
+		t.Fatalf("dry run = %+v %s", got.out, got.text)
+	}
+	if e.count("statements") != 0 || e.count("transactions") != 0 || e.count("observations") != 0 {
+		t.Error("a dry run recorded the statement")
+	}
+}
+
 func TestAStatementLineWithoutItsAnchorIsRejectedWithThePathToFix(t *testing.T) {
 	e := newEnv(t)
 	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))

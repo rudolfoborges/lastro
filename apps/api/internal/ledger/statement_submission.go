@@ -25,6 +25,8 @@ const (
 	reasonStatementCheck = "Confirmado pela fatura."
 )
 
+var errDryRun = errors.New("dry run: roll back")
+
 type statementSubmitter struct {
 	t          *tx
 	in         StatementExtraction
@@ -48,8 +50,15 @@ func (s *Service) SubmitStatement(ctx context.Context, accountID uuid.UUID, in S
 		sub := &statementSubmitter{t: t, in: in, identities: itemIdentities(in), loc: loc, actor: actor, receivedAt: receivedAt}
 		out, err = sub.run()
 		out.Location = loc
+		if err == nil && in.DryRun && out.Result == StatementRecorded {
+			out.Result = StatementPreviewed
+			return errDryRun
+		}
 		return err
 	})
+	if errors.Is(err, errDryRun) {
+		return out, nil
+	}
 	return out, err
 }
 
@@ -542,20 +551,11 @@ func itemOccurrence(item StatementItem) calendar.Occurrence {
 }
 
 func (s *statementSubmitter) submission(result StatementResult, row tenantdb.Statement, version tenantdb.StatementVersion, lines []StatementLine) (StatementSubmission, error) {
-	statement := toStatement(row, version)
-	rows, err := s.t.q.OpenStatementClarifications(s.t.ctx, tenantdb.OpenStatementClarificationsParams{AccountID: s.t.accountID, StatementID: &row.ID})
+	review, err := s.t.review(row, version)
 	if err != nil {
-		return StatementSubmission{}, fmt.Errorf("list statement clarifications: %w", err)
+		return StatementSubmission{}, err
 	}
-	clarifications := make([]Clarification, 0, len(rows))
-	for _, r := range rows {
-		clarification, err := s.t.withTarget(r)
-		if err != nil {
-			return StatementSubmission{}, err
-		}
-		clarifications = append(clarifications, clarification)
-	}
-	return StatementSubmission{Result: result, Statement: &statement, Lines: lines, Clarifications: clarifications}, nil
+	return StatementSubmission{Result: result, Statement: &review.Statement, Lines: lines, Review: &review}, nil
 }
 
 func (t *tx) statementLines(versionID uuid.UUID) ([]StatementLine, error) {

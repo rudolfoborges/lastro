@@ -136,17 +136,29 @@ WHERE c.account_id = $1
   AND (cardinality($3::text[]) = 0 OR c.kind = ANY ($3::text[]))
   AND ($4::date IS NULL OR t.occurred_on >= $4::date)
   AND ($5::date IS NULL OR t.occurred_on <= $5::date)
+  AND (
+      $6::uuid IS NULL
+      OR c.statement_id = $6::uuid
+      OR c.transaction_id IN (
+          SELECT e.transaction_id
+          FROM statement_lines l
+          JOIN statement_versions v ON v.account_id = l.account_id AND v.id = l.statement_version_id
+          JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+          WHERE l.account_id = c.account_id AND v.statement_id = $6::uuid
+      )
+  )
 ORDER BY t.occurred_on NULLS LAST, c.created_at, c.id
-LIMIT $6
+LIMIT $7
 `
 
 type ListClarificationsParams struct {
-	AccountID uuid.UUID
-	Status    string
-	Kinds     []string
-	FromDate  *time.Time
-	ToDate    *time.Time
-	MaxRows   int32
+	AccountID   uuid.UUID
+	Status      string
+	Kinds       []string
+	FromDate    *time.Time
+	ToDate      *time.Time
+	StatementID *uuid.UUID
+	MaxRows     int32
 }
 
 func (q *Queries) ListClarifications(ctx context.Context, arg ListClarificationsParams) ([]Clarification, error) {
@@ -156,6 +168,7 @@ func (q *Queries) ListClarifications(ctx context.Context, arg ListClarifications
 		arg.Kinds,
 		arg.FromDate,
 		arg.ToDate,
+		arg.StatementID,
 		arg.MaxRows,
 	)
 	if err != nil {
@@ -227,55 +240,6 @@ func (q *Queries) LockClarification(ctx context.Context, arg LockClarificationPa
 		&i.StatementID,
 	)
 	return i, err
-}
-
-const openStatementClarifications = `-- name: OpenStatementClarifications :many
-SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
-FROM clarifications
-WHERE account_id = $1 AND statement_id = $2 AND status = 'open'
-ORDER BY created_at, id
-`
-
-type OpenStatementClarificationsParams struct {
-	AccountID   uuid.UUID
-	StatementID *uuid.UUID
-}
-
-func (q *Queries) OpenStatementClarifications(ctx context.Context, arg OpenStatementClarificationsParams) ([]Clarification, error) {
-	rows, err := q.db.Query(ctx, openStatementClarifications, arg.AccountID, arg.StatementID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Clarification{}
-	for rows.Next() {
-		var i Clarification
-		if err := rows.Scan(
-			&i.ID,
-			&i.AccountID,
-			&i.Kind,
-			&i.TransactionID,
-			&i.ObservationID,
-			&i.Subject,
-			&i.DedupKey,
-			&i.Question,
-			&i.Context,
-			&i.Status,
-			&i.Resolution,
-			&i.ResolvedBy,
-			&i.ResolvedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.StatementID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const openTransactionClarifications = `-- name: OpenTransactionClarifications :many

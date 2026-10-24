@@ -114,7 +114,8 @@
       "amount": "30.00",
       "date": "2026-09-25",
       "page": 3,
-      "excerpt": "25/09 ESTORNO LOJA EXEMPLO -30,00"
+      "excerpt": "25/09 ESTORNO LOJA EXEMPLO -30,00",
+      "category": "home"
     },
     {
       "kind": "credit",

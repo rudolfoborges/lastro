@@ -168,6 +168,7 @@ type StatementExtraction struct {
 	FileSHA256      []byte
 	Items           []StatementItem
 	Doubts          []ReadingDoubt
+	DryRun          bool
 }
 
 type Statement struct {
@@ -197,6 +198,7 @@ type StatementResult string
 
 const (
 	StatementRecorded        StatementResult = "recorded"
+	StatementPreviewed       StatementResult = "previewed"
 	StatementAlreadyRecorded StatementResult = "already_recorded"
 	StatementPossibleMatch   StatementResult = "possible_match"
 )
@@ -222,12 +224,12 @@ type ItemCandidates struct {
 }
 
 type StatementSubmission struct {
-	Result         StatementResult
-	Statement      *Statement
-	Lines          []StatementLine
-	Candidates     []ItemCandidates
-	Clarifications []Clarification
-	Location       *time.Location
+	Result     StatementResult
+	Statement  *Statement
+	Lines      []StatementLine
+	Candidates []ItemCandidates
+	Review     *StatementReview
+	Location   *time.Location
 }
 
 type itemIdentity struct {
