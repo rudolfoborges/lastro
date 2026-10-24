@@ -82,7 +82,25 @@ type SubmitNotificationInterpretationsInput struct {
 
 type MatchCandidateOutput struct {
 	Transaction TransactionOutput `json:"transaction"`
-	Reasons     []string          `json:"reasons" jsonschema:"why it may be the same purchase, in Portuguese"`
+	Sources     []string          `json:"sources" jsonschema:"where the candidate already has evidence from: conversation, wallet_notification or statement_line"`
+	Reasons     []string          `json:"reasons" jsonschema:"what matches, in Portuguese"`
+	Differences []string          `json:"differences,omitempty" jsonschema:"what does not match, in Portuguese; weigh them before deciding"`
+}
+
+func candidateOutputs(candidates []ledger.MatchCandidate) []MatchCandidateOutput {
+	if len(candidates) == 0 {
+		return nil
+	}
+	out := make([]MatchCandidateOutput, len(candidates))
+	for i, candidate := range candidates {
+		out[i] = MatchCandidateOutput{
+			Transaction: transactionOutput(candidate.Transaction, &candidate.Category),
+			Sources:     stringsOf(candidate.Sources),
+			Reasons:     candidate.Reasons,
+			Differences: candidate.Differences,
+		}
+	}
+	return out
 }
 
 type InterpretationResultOutput struct {
@@ -240,9 +258,7 @@ func interpretationResultOutput(observationID string, outcome ledger.Interpretat
 	for _, conflict := range outcome.Conflicts {
 		out.Conflicts = append(out.Conflicts, string(conflict.Field))
 	}
-	for _, candidate := range outcome.Candidates {
-		out.Candidates = append(out.Candidates, MatchCandidateOutput{Transaction: transactionOutput(candidate.Transaction, &candidate.Category), Reasons: candidate.Reasons})
-	}
+	out.Candidates = candidateOutputs(outcome.Candidates)
 	for _, clarification := range outcome.Clarifications {
 		out.Clarifications = append(out.Clarifications, clarificationOutput(clarification))
 	}

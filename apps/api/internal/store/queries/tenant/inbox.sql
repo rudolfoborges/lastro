@@ -59,24 +59,6 @@ FROM transaction_evidence e
 JOIN wallet_notification_versions v ON v.account_id = e.account_id AND v.observation_id = e.observation_id
 WHERE e.account_id = @account_id AND e.transaction_id = @transaction_id AND e.status = 'confirmed';
 
--- name: FindMatchCandidates :many
-SELECT t.*
-FROM transactions t
-WHERE t.account_id = @account_id
-  AND t.status NOT IN ('voided', 'merged')
-  AND t.nature = 'expense'
-  AND t.amount_minor = @amount_minor
-  AND t.currency = @currency
-  AND (t.occurred_on BETWEEN @from_day::date AND @to_day::date
-       OR (t.occurred_on IS NULL AND t.created_at BETWEEN @from_at::timestamptz AND @to_at::timestamptz))
-  AND NOT EXISTS (
-      SELECT FROM transaction_evidence e
-      JOIN wallet_notification_versions v ON v.account_id = e.account_id AND v.observation_id = e.observation_id
-      WHERE e.account_id = t.account_id AND e.transaction_id = t.id AND e.status = 'confirmed'
-  )
-ORDER BY t.created_at, t.id
-LIMIT 5;
-
 -- name: LockConfirmedEvidence :one
 SELECT *
 FROM transaction_evidence

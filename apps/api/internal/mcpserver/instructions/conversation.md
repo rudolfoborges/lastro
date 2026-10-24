@@ -27,10 +27,14 @@ Every write returns `outcome` (`completed`, `pending` or `failed`), a `result` a
 - `recorded`: confirm to Rudolfo what was recorded, say which fields were inferred (`inferred`) and what is still pending (`pending`).
 - `duplicate_of`: the same `request_id` was already recorded; nothing new was created. Confirm the existing record, without saying it was recorded twice.
 - `possible_duplicate`: nothing was recorded. The same amount and text arrived recently in this conversation. Ask Rudolfo whether it is the same purchase. If it is a second real purchase, call again with the **same** `request_id` and `confirm_distinct: true`.
+- `possible_match`: nothing was recorded. Google Wallet or a statement already recorded a purchase with the same amount and a close date; `candidates` explains each one with `reasons` and `differences` (see `get_instructions` topic `matching`). Call again with the **same** `request_id` and:
+  - `related_transaction_id` when it is the same purchase: the message becomes its evidence and fills what was missing (merchant, purpose, card, date, category). Answer `linked`; nothing new is created;
+  - `confirm_distinct: true` when it is another purchase.
+  Ask Rudolfo when the candidates do not settle it.
 - `needs_clarification`: nothing was recorded. Ask the suggested question, then call again with the same `request_id` and the answer.
 - A tool error (`outcome: "failed"`) means **nothing was recorded**. Tell Rudolfo, fix what the `message` says, and call again. For `internal_error`, retry with the same request.
 
-Never tell Rudolfo that something was recorded unless the answer says `recorded` or `duplicate_of`.
+Never tell Rudolfo that something was recorded unless the answer says `recorded`, `linked` or `duplicate_of`.
 
 ## Later corrections
 

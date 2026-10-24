@@ -459,40 +459,24 @@ func (s *statementSubmitter) candidates(eligible func(index int) bool) ([]ItemCa
 }
 
 func (s *statementSubmitter) itemCandidates(item StatementItem, linked map[uuid.UUID]bool) ([]MatchCandidate, error) {
-	from, to := s.window(item)
-	params := tenantdb.FindStatementMatchCandidatesParams{
-		AccountID:   s.t.accountID,
-		Nature:      string(itemNatures[item.Kind]),
-		AmountMinor: item.Amount.Minor,
-		Currency:    item.Amount.Currency,
-		FromDay:     from.Time(),
-		ToDay:       to.Time(),
-		FromAt:      time.Date(from.Year, from.Month, from.Day, 0, 0, 0, 0, s.loc),
-		ToAt:        time.Date(to.Year, to.Month, to.Day, 0, 0, 0, 0, s.loc).AddDate(0, 0, 1),
+	card := s.lineCard(item)
+	probe := matchProbe{
+		nature:          itemNatures[item.Kind],
+		amount:          item.Amount,
+		originalAmount:  item.OriginalAmount,
+		merchant:        item.Merchant,
+		occurred:        itemOccurrence(item),
+		method:          &PaymentMethodRef{Kind: PaymentCreditCard, CardLast4: &card},
+		excludedIDs:     make([]uuid.UUID, 0, len(linked)),
+		excludedSources: []Source{SourceStatementLine},
+		paymentKinds:    []PaymentKind{PaymentCreditCard},
+		label:           "na fatura",
 	}
-	if item.OriginalAmount != nil {
-		params.OriginalAmountMinor, params.OriginalCurrency = &item.OriginalAmount.Minor, &item.OriginalAmount.Currency
+	for id := range linked {
+		probe.excludedIDs = append(probe.excludedIDs, id)
 	}
-	rows, err := s.t.q.FindStatementMatchCandidates(s.t.ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("find statement match candidates: %w", err)
-	}
-	var candidates []MatchCandidate
-	for _, row := range rows {
-		if linked[row.ID] {
-			continue
-		}
-		transaction, err := s.t.withPaymentMethod(row)
-		if err != nil {
-			return nil, err
-		}
-		category, err := s.t.effectiveCategory(transaction.ID)
-		if err != nil {
-			return nil, err
-		}
-		candidates = append(candidates, MatchCandidate{Transaction: transaction, Category: category, Reasons: s.matchReasons(transaction, item)})
-	}
-	return candidates, nil
+	probe.from, probe.to = s.window(item)
+	return s.t.findCandidates(probe, s.loc)
 }
 
 func (s *statementSubmitter) window(item StatementItem) (calendar.Date, calendar.Date) {
@@ -507,26 +491,6 @@ func (s *statementSubmitter) window(item StatementItem) (calendar.Date, calendar
 		to = *s.in.PeriodEnd
 	}
 	return from, to
-}
-
-func (s *statementSubmitter) matchReasons(transaction Transaction, item StatementItem) []string {
-	reasons := []string{"mesmo valor (" + transaction.Amount.Format() + ")"}
-	switch {
-	case transaction.Occurred.On != nil && item.Date != nil:
-		reasons = append(reasons, fmt.Sprintf("registrado em %s; na fatura, %s", transaction.Occurred.On.Format(), item.Date.Format()))
-	case transaction.Occurred.On != nil:
-		reasons = append(reasons, "registrado em "+transaction.Occurred.On.Format()+", dentro do período da fatura")
-	default:
-		reasons = append(reasons, "registrado em "+calendar.DateOf(transaction.CreatedAt, s.loc).Format()+", sem data da compra")
-	}
-	card := s.lineCard(item)
-	if method := transaction.PaymentMethod; method != nil && method.CardLast4 != nil && *method.CardLast4 == card {
-		reasons = append(reasons, "mesmo cartão final "+card)
-	}
-	if transaction.PaymentMethod == nil {
-		reasons = append(reasons, "sem meio de pagamento informado")
-	}
-	return reasons
 }
 
 func (s *statementSubmitter) unknownItem(statementID, observationID uuid.UUID, item StatementItem) newClarification {

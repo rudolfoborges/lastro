@@ -15,6 +15,8 @@ import (
 
 var ErrStatementNotFound = errors.New("no statement matches; Rudolfo has not sent it yet or the closing date is different")
 
+const statementCycleDays = 30
+
 type ReviewStatus string
 
 const (
@@ -50,6 +52,7 @@ const (
 	PendingReadingDoubts  PendingKind = "reading_doubts"
 	PendingDifference     PendingKind = "difference"
 	PendingClarifications PendingKind = "clarifications"
+	PendingUnmatched      PendingKind = "unmatched_purchases"
 )
 
 type ReviewPending struct {
@@ -63,6 +66,7 @@ type StatementReview struct {
 	Status         ReviewStatus
 	Pending        []ReviewPending
 	Clarifications []Clarification
+	Unmatched      []Transaction
 }
 
 type StatementRef struct {
@@ -214,9 +218,40 @@ func (t *tx) review(statement tenantdb.Statement, version tenantdb.StatementVers
 		}
 		review.Clarifications = append(review.Clarifications, clarification)
 	}
+	if review.Unmatched, err = t.unmatchedPurchases(statement, version); err != nil {
+		return StatementReview{}, err
+	}
 	review.Pending = pendingOf(review, doubts)
 	review.Status = statusOf(review, doubts)
 	return review, nil
+}
+
+func (t *tx) unmatchedPurchases(statement tenantdb.Statement, version tenantdb.StatementVersion) ([]Transaction, error) {
+	cards, err := t.q.StatementVersionCards(t.ctx, tenantdb.StatementVersionCardsParams{AccountID: t.accountID, StatementVersionID: version.ID})
+	if err != nil {
+		return nil, fmt.Errorf("list statement cards: %w", err)
+	}
+	closing := calendar.DateFromTime(statement.ClosingDate)
+	from := closing.AddDays(-statementCycleDays)
+	if version.PeriodStart != nil {
+		from = calendar.DateFromTime(*version.PeriodStart)
+	}
+	rows, err := t.q.UnmatchedCardPurchases(t.ctx, tenantdb.UnmatchedCardPurchasesParams{
+		AccountID: t.accountID,
+		Cards:     append(cards, statement.CardLast4),
+		FromDay:   from.Time(),
+		ToDay:     closing.Time(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list unmatched card purchases: %w", err)
+	}
+	unmatched := make([]Transaction, len(rows))
+	for i, row := range rows {
+		if unmatched[i], err = t.withPaymentMethod(row); err != nil {
+			return nil, err
+		}
+	}
+	return unmatched, nil
 }
 
 func (t *tx) composition(version tenantdb.StatementVersion) (StatementComposition, error) {
@@ -298,6 +333,9 @@ func pendingOf(review StatementReview, doubts int) []ReviewPending {
 	}
 	if !composition.Difference.IsZero() {
 		pending = append(pending, ReviewPending{Kind: PendingDifference, Description: fmt.Sprintf("O total calculado (%s) difere do total informado na fatura (%s) em %s.", composition.ComputedTotal.Format(), composition.InformedTotal.Format(), composition.Difference.Format())})
+	}
+	if len(review.Unmatched) > 0 {
+		pending = append(pending, ReviewPending{Kind: PendingUnmatched, Description: fmt.Sprintf("%d compra(s) no cartão registrada(s) pela conversa ou pelo Google Wallet neste período não aparece(m) nesta fatura. Elas continuam provisórias; compras perto do fechamento costumam entrar na próxima fatura.", len(review.Unmatched))})
 	}
 	if others := len(review.Clarifications) - doubts; others > 0 {
 		pending = append(pending, ReviewPending{Kind: PendingClarifications, Description: fmt.Sprintf("%d dúvida(s) em aberto nos lançamentos desta fatura (categoria, finalidade ou correspondência). Elas não mudam o total.", others)})

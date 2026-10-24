@@ -68,7 +68,7 @@ Send the reading first with `dry_run: true`. Lastro validates it, matches it aga
 
 ## Purchases already recorded
 
-Rudolfo's credit card purchases told in the conversation or seen in Google Wallet notifications are waiting for the statement as provisional transactions. Send the reading without links first. When a `purchase` or `refund` line may be one of them, Lastro answers `possible_match`: nothing is recorded, and `candidates` lists, for each item `index`, the transactions and the reasons. Then send the **whole reading again**, with each listed item decided:
+Rudolfo's credit card purchases told in the conversation or seen in Google Wallet notifications are waiting for the statement as provisional transactions. Send the reading without links first. When a `purchase` or `refund` line may be one of them, Lastro answers `possible_match`: nothing is recorded, and `candidates` lists, for each item `index`, the transactions with their `reasons` and `differences` (see `get_instructions` topic `matching`). Then send the **whole reading again**, with each listed item decided:
 
 - same purchase: `related_transaction_id`. Lastro links the line, confirms the transaction, fills the card and the missing fields, and keeps what Rudolfo confirmed;
 - a different purchase: `confirm_distinct: true`;
@@ -105,6 +105,7 @@ Tell Rudolfo, using `summary`, what was recorded and ask the open questions in `
 
 - "O que falta conferir nesta fatura?": `get_statement_review` (the latest statement by default, or `closing_date`), then relay `pending` and the open questions. `list_clarifications` with `statement_id` lists only the questions about that statement.
 - "Onde está essa compra na fatura?": `get_statement_line_source` with the `transaction_id` (or `statement_id` and `index`) returns the page and the excerpt you sent, so Rudolfo finds the line in his PDF.
+- The review lists in `unmatched` the card purchases of the cycle from the conversation or Google Wallet that no line confirmed. They stay provisional and usually appear in the next statement; never void them for that.
 
 ## Never
 

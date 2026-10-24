@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	matchWindowDays     = 2
 	maxQuestion         = 500
 	subjectNotification = "notification"
 	reasonLinked        = "Conferido com a notificação do Google Wallet."
@@ -60,12 +59,6 @@ const (
 	InterpretationAlreadyApplied InterpretationResult = "already_applied"
 	InterpretationPossibleMatch  InterpretationResult = "possible_match"
 )
-
-type MatchCandidate struct {
-	Transaction Transaction
-	Category    Allocation
-	Reasons     []string
-}
 
 type InterpretationOutcome struct {
 	Result         InterpretationResult
@@ -538,56 +531,33 @@ func (a *interpreter) matchCandidates() ([]MatchCandidate, error) {
 		if err != nil {
 			return nil, err
 		}
-		if transaction.Status != StatusVoided && transaction.Status != StatusMerged {
-			candidates = append(candidates, MatchCandidate{Transaction: transaction, Reasons: []string{"registrado a partir de uma versão anterior desta mesma notificação"}})
+		if transaction.Status == StatusVoided || transaction.Status == StatusMerged {
+			continue
 		}
+		candidate, err := a.t.candidate(transaction, []string{"registrado a partir de uma versão anterior desta mesma notificação"})
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
 	}
-	day := calendar.DateOf(a.version.PostedAt, a.loc)
-	rows, err := a.t.q.FindMatchCandidates(a.t.ctx, tenantdb.FindMatchCandidatesParams{
-		AccountID:   a.t.accountID,
-		AmountMinor: a.in.Amount.Minor,
-		Currency:    a.in.Amount.Currency,
-		FromDay:     day.AddDays(-matchWindowDays).Time(),
-		ToDay:       day.AddDays(matchWindowDays).Time(),
-		FromAt:      a.version.PostedAt.Add(-matchWindowDays * 24 * time.Hour),
-		ToAt:        a.version.PostedAt.Add(matchWindowDays * 24 * time.Hour),
-	})
+	occurred := a.occurred()
+	probe := matchProbe{
+		nature:          NatureExpense,
+		amount:          *a.in.Amount,
+		merchant:        a.in.Merchant,
+		occurred:        occurred,
+		method:          a.in.PaymentMethod,
+		excludedIDs:     earlier,
+		excludedSources: []Source{SourceWalletNotification},
+		paymentKinds:    []PaymentKind{PaymentCreditCard, PaymentDebitCard},
+		label:           "na notificação",
+	}
+	probe.from, probe.to = occurrenceWindow(occurred, *occurred.On, matchWindowDays)
+	found, err := a.t.findCandidates(probe, a.loc)
 	if err != nil {
-		return nil, fmt.Errorf("find match candidates: %w", err)
+		return nil, err
 	}
-	for _, row := range rows {
-		transaction, err := a.t.withPaymentMethod(row)
-		if err != nil {
-			return nil, err
-		}
-		if !slices.ContainsFunc(candidates, func(c MatchCandidate) bool { return c.Transaction.ID == transaction.ID }) {
-			candidates = append(candidates, MatchCandidate{Transaction: transaction, Reasons: a.matchReasons(transaction)})
-		}
-	}
-	for i := range candidates {
-		current, err := a.t.currentCategory(candidates[i].Transaction.ID)
-		if err != nil {
-			return nil, err
-		}
-		candidates[i].Category = EffectiveCategory(candidates[i].Transaction, current)
-	}
-	return candidates, nil
-}
-
-func (a *interpreter) matchReasons(transaction Transaction) []string {
-	reasons := []string{"mesmo valor (" + transaction.Amount.Format() + ")"}
-	if transaction.Occurred.On != nil {
-		reasons = append(reasons, "compra de "+transaction.Occurred.On.Format()+", perto da notificação")
-	} else {
-		reasons = append(reasons, "registrado em "+calendar.DateOf(transaction.CreatedAt, a.loc).Format()+", sem data da compra")
-	}
-	if method, ref := transaction.PaymentMethod, a.in.PaymentMethod; method != nil && ref != nil && method.CardLast4 != nil && ref.CardLast4 != nil && *method.CardLast4 == *ref.CardLast4 {
-		reasons = append(reasons, "mesmo cartão final "+*method.CardLast4)
-	}
-	if transaction.Merchant != nil && a.in.Merchant != nil && strings.EqualFold(*transaction.Merchant, *a.in.Merchant) {
-		reasons = append(reasons, "mesmo estabelecimento")
-	}
-	return reasons
+	return append(candidates, found...), nil
 }
 
 func (a *interpreter) record(result applied, hash []byte) (InterpretationOutcome, error) {
