@@ -44,7 +44,7 @@ func syntheticStatement() ledger.StatementExtraction {
 	installment.Category = ptr("home")
 	pix := line(ledger.ItemPixInstallment, "PIX PARCELADO 02/12", 50000, "2026-08-10", 4)
 	pix.Installment = &ledger.InstallmentPosition{Number: 2, Count: 12}
-	pix.Category = ptr("home")
+	pix.Category, pix.Purpose = ptr("home"), ptr("material da obra")
 	pix.Components = []ledger.ChargeComponent{
 		{Kind: ledger.ComponentPrincipal, Amount: brl(45000), Included: true},
 		{Kind: ledger.ComponentInterest, Amount: brl(5000), Included: true},

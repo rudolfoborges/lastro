@@ -142,6 +142,54 @@ func TestTransactionsLeftAsUnidentifiedByCaseGetTheCategoryQuestion(t *testing.T
 	}
 }
 
+func TestComponentsReadBeforeTheirTableAreCopiedFromTheLines(t *testing.T) {
+	ctx := t.Context()
+	databaseURL := storetest.EmptyDatabaseURL(t)
+	migrator, err := migrations.Open(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrator.Close() })
+	if _, err := migrator.UpTo(ctx, 20); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	_, err = conn.Exec(ctx, `
+		INSERT INTO accounts (id, name) VALUES ('0199f0a0-0000-7000-8000-000000000001', 'Rudolfo');
+		INSERT INTO payment_methods (id, account_id, kind, card_last4) VALUES ('0199f0a0-0000-7000-8000-0000000000e1', '0199f0a0-0000-7000-8000-000000000001', 'credit_card', '1234');
+		INSERT INTO statements (id, account_id, issuer, issuer_key, card_last4, closing_date, payment_method_id)
+		VALUES ('0199f0a0-0000-7000-8000-0000000000f1', '0199f0a0-0000-7000-8000-000000000001', 'Banco Exemplo', 'bancoexemplo', '1234', '2026-10-03', '0199f0a0-0000-7000-8000-0000000000e1');
+		INSERT INTO observations (id, account_id, source, source_key, payload, received_at) VALUES
+		    ('0199f0a0-0000-7000-8000-0000000000a1', '0199f0a0-0000-7000-8000-000000000001', 'statement_line', 'line-1',
+		     '{"statement_id": "0199f0a0-0000-7000-8000-0000000000f1", "kind": "pix_installment", "amount": "500.00", "currency": "BRL",
+		       "components": [{"kind": "principal", "amount": "450.00", "included": true}, {"kind": "interest", "amount": "50.00", "included": true}]}', now()),
+		    ('0199f0a0-0000-7000-8000-0000000000a2', '0199f0a0-0000-7000-8000-000000000001', 'statement_line', 'line-2',
+		     '{"statement_id": "0199f0a0-0000-7000-8000-0000000000f1", "kind": "purchase", "amount": "32.97", "currency": "BRL"}', now())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := migrator.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := conn.Query(ctx, "SELECT kind || ':' || amount_minor || ':' || included FROM charge_components ORDER BY kind")
+	if err != nil {
+		t.Fatal(err)
+	}
+	components, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"interest:5000:true", "principal:45000:true"}; !slices.Equal(components, want) {
+		t.Errorf("components = %q, want %q", components, want)
+	}
+}
+
 func TestFingerprintIsStable(t *testing.T) {
 	first, err := migrations.Fingerprint()
 	if err != nil {

@@ -49,7 +49,7 @@ Send **every line** of the statement in `items`, in the order printed, including
 - `card_last4` when the line belongs to an additional or virtual card.
 - International lines: `amount` is what was charged in reais; send `original_amount` and `original_currency` as printed. The IOF of the purchase is its own `tax` line.
 - `installment_number` and `installment_count` for every "n/N" line.
-- `components` only when the statement details principal, interest, IOF or fee of a line. `included: true` when the value is inside the line amount (the included ones must add up to the amount, principal too); `included: false` when it is charged in another line. Never invent a breakdown.
+- `components` only when the statement details principal, interest, IOF or fee of a line. `included: true` when the value is inside the line amount (the included ones must add up to the amount, principal too); `included: false` when it is charged in another line, which you also send as its own item. Never invent a breakdown. Lastro never adds a component on top of the line: interest inside a R$ 500,00 installment is part of the R$ 500,00.
 - `category`: a suggestion, as in the classification policy. Use `financial_charges` for interest, fees and taxes. Payments and credits need no category.
 - `purpose` only when Rudolfo told you.
 
@@ -63,6 +63,8 @@ Every "n/N" line (`installment`, `pix_installment`) is one installment of a purc
 - **Your decision:** otherwise, when there are plans or purchases that may be the same one, such as a TV Rudolfo told you he bought "em 12x de 100", Lastro answers `possible_match`. Use `related_transaction_id` for the same purchase, `confirm_distinct` for another, or `defer_match` when only Rudolfo can tell.
 - **A purchase seen only on the statement:** Lastro creates it from the line (`created`). The purchase date is the line date, and `amount_basis` is `installment`: only the installment amount is known, and the total is **never** multiplied out. Its plan estimates the next installments from the one charged. When Rudolfo tells the total, correct the amount with `update_transaction`; it becomes the total of the plan.
 - **Statements recorded before installment plans existed** kept their installment lines without a purchase. Sending the same reading again (`already_recorded`) gives those lines their purchase and plan.
+
+**Pix parcelado** (`pix_installment`) is a payment made by Pix and financed on the card; its modality is kept apart from the category and the purpose. Send `purpose` when Rudolfo told you; otherwise Lastro asks him what it was for (goods or services, a transfer or a refinancing). If he says it was a transfer or a refinancing, correct the nature with `update_transaction`. When the statement does not detail principal and interest of a Pix installment, Lastro keeps the amount whole and asks once per plan.
 
 `get_transaction` shows the plan of a purchase: installments charged, still to come (`known_future` or `estimated`), and `remaining`, with the date of the information.
 

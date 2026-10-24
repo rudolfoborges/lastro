@@ -62,6 +62,18 @@ type CategoryAllocation struct {
 	CreatedAt     time.Time
 }
 
+type ChargeComponent struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	ObservationID uuid.UUID
+	StatementID   uuid.UUID
+	Kind          string
+	AmountMinor   int64
+	Currency      string
+	Included      bool
+	CreatedAt     time.Time
+}
+
 type Clarification struct {
 	ID            uuid.UUID
 	AccountID     uuid.UUID

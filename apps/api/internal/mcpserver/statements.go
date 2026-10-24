@@ -167,6 +167,7 @@ type StatementCompositionOutput struct {
 	Credits         CompositionGroupOutput `json:"credits" jsonschema:"credits and refunds, subtracted from the total"`
 	Adjustments     CompositionGroupOutput `json:"adjustments" jsonschema:"net of adjustments: positive adds, negative subtracts"`
 	Unknown         CompositionGroupOutput `json:"unknown" jsonschema:"net of lines not interpreted yet"`
+	IncludedCharges CompositionGroupOutput `json:"included_charges" jsonschema:"interest, IOF and fees inside installment amounts, as detailed by the statement; already counted in installments and never added again"`
 	ComputedTotal   MoneyOutput            `json:"computed_total" jsonschema:"previous balance plus charged lines minus payments and credits, computed by Lastro"`
 	InformedTotal   MoneyOutput            `json:"informed_total" jsonschema:"total printed on the statement"`
 	Difference      MoneyOutput            `json:"difference" jsonschema:"informed minus computed; zero when the composition explains the printed total"`
@@ -373,16 +374,17 @@ func reviewOutput(review ledger.StatementReview) StatementReviewOutput {
 	out := StatementReviewOutput{
 		Status: string(review.Status),
 		Composition: StatementCompositionOutput{
-			Purchases:     group(composition.Purchases),
-			Installments:  group(composition.Installments),
-			Charges:       group(composition.Charges),
-			Payments:      group(composition.Payments),
-			Credits:       group(composition.Credits),
-			Adjustments:   group(composition.Adjustments),
-			Unknown:       group(composition.Unknown),
-			ComputedTotal: moneyOutput(composition.ComputedTotal),
-			InformedTotal: moneyOutput(composition.InformedTotal),
-			Difference:    moneyOutput(composition.Difference),
+			Purchases:       group(composition.Purchases),
+			Installments:    group(composition.Installments),
+			Charges:         group(composition.Charges),
+			Payments:        group(composition.Payments),
+			Credits:         group(composition.Credits),
+			Adjustments:     group(composition.Adjustments),
+			Unknown:         group(composition.Unknown),
+			IncludedCharges: group(composition.IncludedCharges),
+			ComputedTotal:   moneyOutput(composition.ComputedTotal),
+			InformedTotal:   moneyOutput(composition.InformedTotal),
+			Difference:      moneyOutput(composition.Difference),
 		},
 	}
 	if composition.PreviousBalance != nil {

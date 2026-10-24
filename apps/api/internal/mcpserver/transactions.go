@@ -94,6 +94,11 @@ type InstallmentOutput struct {
 	InformedOn  string      `json:"informed_on" jsonschema:"date of the information; an old date means the projection may be stale"`
 }
 
+type ComponentOutput struct {
+	Kind   string      `json:"kind" jsonschema:"principal, interest, iof or fee"`
+	Amount MoneyOutput `json:"amount"`
+}
+
 type InstallmentPlanOutput struct {
 	Modality           string              `json:"modality" jsonschema:"card_installment or pix_installment"`
 	Count              int                 `json:"count"`
@@ -103,6 +108,8 @@ type InstallmentPlanOutput struct {
 	InformedOn         string              `json:"informed_on"`
 	Installments       []InstallmentOutput `json:"installments" jsonschema:"charged ones and the ones still to come; numbers charged before Lastro saw the plan are left out"`
 	Charged            MoneyOutput         `json:"charged"`
+	Breakdown          []ComponentOutput   `json:"breakdown,omitempty" jsonschema:"principal, interest, IOF and fees inside the charged installments, as the statements detailed them; they add up to the charged amount, never on top of it"`
+	WithoutBreakdown   int                 `json:"without_breakdown,omitempty" jsonschema:"charged installments whose statement did not detail the composition"`
 	RemainingKnown     MoneyOutput         `json:"remaining_known" jsonschema:"future installments that are known"`
 	RemainingEstimated MoneyOutput         `json:"remaining_estimated" jsonschema:"future installments that are estimated"`
 	Remaining          MoneyOutput         `json:"remaining" jsonschema:"future commitment of this plan: known plus estimated"`
@@ -499,6 +506,7 @@ func planOutput(plan ledger.InstallmentPlan) *InstallmentPlanOutput {
 		InformedOn:         plan.InformedOn.String(),
 		Installments:       []InstallmentOutput{},
 		Charged:            moneyOutput(plan.Charged),
+		WithoutBreakdown:   plan.ChargedWithoutDetail,
 		RemainingKnown:     moneyOutput(plan.RemainingKnown),
 		RemainingEstimated: moneyOutput(plan.RemainingEstimated),
 		Remaining:          moneyOutput(plan.Remaining()),
@@ -506,6 +514,9 @@ func planOutput(plan ledger.InstallmentPlan) *InstallmentPlanOutput {
 	if plan.InstallmentAmount != nil {
 		amount := moneyOutput(*plan.InstallmentAmount)
 		out.InstallmentAmount = &amount
+	}
+	for _, component := range plan.Breakdown {
+		out.Breakdown = append(out.Breakdown, ComponentOutput{Kind: string(component.Kind), Amount: moneyOutput(component.Amount)})
 	}
 	if plan.Total != nil {
 		total := moneyOutput(*plan.Total)
