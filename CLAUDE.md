@@ -51,6 +51,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | regra de classificação | `classification_rule` |
 | histórico de alterações | `revision` |
 | acompanhamento automático / cobertura / lacuna | `tracking` / `coverage` / `gap` |
+| período de acompanhamento / sinal de vida do celular / entrega atrasada | `tracking_period` / `heartbeat` / `late_delivery` |
 | precisão da data / origem da data | `date_precision` (`exact`, `day`, `month`, `unknown`) / `date_source` (`stated`, `inferred`, `document`) |
 | "agora", "hoje", "ontem" | `date_reference` (`now`, `today`, `yesterday`) |
 | fuso horário da conta | `timezone` |
@@ -65,7 +66,9 @@ All communication with the user goes through Case, the user's AI assistant, over
 | chave de idempotência / estado da operação: concluída, pendente, falhou | `idempotency_key` / `outcome`: `completed`, `pending`, `failed` |
 | autorização dada a um aplicativo (OAuth) | `oauth_grant` |
 | cartão de crédito, cartão de débito, Pix, dinheiro | `credit_card`, `debit_card`, `pix`, `cash` |
-| tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated` |
+| tipo do evento: compra, atualização, cancelamento, estorno, recusa, aviso, sem relação, incerto | `event_type`: `purchase`, `purchase_update`, `cancellation`, `refund`, `declined`, `notice`, `unrelated`, `unknown` |
+| efeito da interpretação: nenhum, criou, vinculou, atualizou, anulou, criou estorno, desfeito | `effect`: `none`, `created`, `linked`, `updated`, `voided`, `refund_created`, `undone` |
+| dispositivo / versão da notificação / caixa de entrada | `wallet_device` / `wallet_notification_versions` / `inbox` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

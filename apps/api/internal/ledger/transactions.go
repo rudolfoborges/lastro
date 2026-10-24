@@ -86,6 +86,7 @@ func (t *tx) createTransaction(observationID uuid.UUID, in NewTransaction, actor
 		Nature:              string(in.Nature),
 		Status:              string(in.Status),
 		Purpose:             in.Purpose,
+		RefundOfID:          in.RefundOfID,
 	}
 	if method != nil {
 		params.PaymentMethodID = &method.ID
@@ -268,6 +269,9 @@ func normalizeNewTransaction(in NewTransaction) (NewTransaction, error) {
 	}
 	if !slices.Contains(natures, in.Nature) {
 		return in, &ValidationError{Field: "nature", Message: fmt.Sprintf("must be one of %v", natures)}
+	}
+	if in.RefundOfID != nil && in.Nature != NatureRefund {
+		return in, &ValidationError{Field: "nature", Message: "must be refund for a transaction that refunds another"}
 	}
 	if !slices.Contains([]Status{StatusProvisional, StatusConfirmed, StatusPendingClarification}, in.Status) {
 		return in, &ValidationError{Field: "status", Message: "must be provisional, confirmed or pending_clarification for a new transaction"}

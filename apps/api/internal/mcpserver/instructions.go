@@ -22,6 +22,7 @@ type topic struct {
 var topics = []topic{
 	{name: "conversation", prompt: "conversation_procedure", description: "How to record, confirm and correct expenses Rudolfo reports in the conversation"},
 	{name: "classification", prompt: "classification_policy", description: "Taxonomy and rules to classify expenses into categories and purpose"},
+	{name: "notifications", prompt: "process_pending_notifications", description: "How to interpret the Google Wallet notifications waiting in the inbox"},
 }
 
 type GetInstructionsInput struct {
@@ -41,7 +42,7 @@ func (s *Server) registerInstructions() {
 	addTool(s, toolSpec{
 		name:        "get_instructions",
 		title:       "Read a Lastro procedure",
-		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses) or classification (categories and purpose). Read conversation before recording and classification before classifying.",
+		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses), classification (categories and purpose) or notifications (the Google Wallet inbox). Read conversation before recording, classification before classifying and notifications before processing the inbox.",
 		readOnly:    true,
 		idempotent:  true,
 		enums:       map[string][]any{"topic": names},

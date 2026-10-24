@@ -37,6 +37,7 @@ const (
 	IngestDiscarded           IngestResult = "discarded"
 	IngestRemoved             IngestResult = "removed"
 	IngestUnknownNotification IngestResult = "unknown_notification"
+	IngestTrackingPaused      IngestResult = "tracking_paused"
 )
 
 const (
@@ -78,6 +79,11 @@ func (s *Service) IngestNotification(ctx context.Context, accountID uuid.UUID, i
 	}
 	var receipt IngestReceipt
 	err := s.inTx(ctx, accountID, func(t *tx) error {
+		active, err := t.trackingActive()
+		if err != nil || !active {
+			receipt = IngestReceipt{Result: IngestTrackingPaused}
+			return err
+		}
 		device, err := t.q.UpsertWalletDevice(t.ctx, tenantdb.UpsertWalletDeviceParams{
 			ID:         store.NewID(),
 			AccountID:  t.accountID,

@@ -81,16 +81,17 @@ func (q *Queries) GetObservation(ctx context.Context, arg GetObservationParams) 
 const insertInterpretation = `-- name: InsertInterpretation :one
 INSERT INTO observation_interpretations (
     id, account_id, observation_id, version, event_type, amount_minor, currency, merchant,
-    occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author
+    occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author,
+    effect, transaction_id, submission_hash
 )
 VALUES (
     $1, $2, $3,
     (SELECT coalesce(max(version), 0) + 1 FROM observation_interpretations WHERE observation_id = $3),
     $4, $5, $6, $7,
     $8, $9, $10, $11, $12,
-    $13, $14
+    $13, $14, $15, $16, $17
 )
-RETURNING id, account_id, observation_id, version, event_type, amount_minor, currency, merchant, occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author, created_at
+RETURNING id, account_id, observation_id, version, event_type, amount_minor, currency, merchant, occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author, created_at, effect, transaction_id, submission_hash
 `
 
 type InsertInterpretationParams struct {
@@ -108,6 +109,9 @@ type InsertInterpretationParams struct {
 	PaymentMethodID *uuid.UUID
 	Details         []byte
 	Author          string
+	Effect          *string
+	TransactionID   *uuid.UUID
+	SubmissionHash  []byte
 }
 
 func (q *Queries) InsertInterpretation(ctx context.Context, arg InsertInterpretationParams) (ObservationInterpretation, error) {
@@ -126,6 +130,9 @@ func (q *Queries) InsertInterpretation(ctx context.Context, arg InsertInterpreta
 		arg.PaymentMethodID,
 		arg.Details,
 		arg.Author,
+		arg.Effect,
+		arg.TransactionID,
+		arg.SubmissionHash,
 	)
 	var i ObservationInterpretation
 	err := row.Scan(
@@ -145,6 +152,9 @@ func (q *Queries) InsertInterpretation(ctx context.Context, arg InsertInterpreta
 		&i.Details,
 		&i.Author,
 		&i.CreatedAt,
+		&i.Effect,
+		&i.TransactionID,
+		&i.SubmissionHash,
 	)
 	return i, err
 }
@@ -193,7 +203,7 @@ func (q *Queries) InsertObservation(ctx context.Context, arg InsertObservationPa
 }
 
 const listInterpretations = `-- name: ListInterpretations :many
-SELECT id, account_id, observation_id, version, event_type, amount_minor, currency, merchant, occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author, created_at
+SELECT id, account_id, observation_id, version, event_type, amount_minor, currency, merchant, occurred_at, occurred_on, date_precision, date_source, payment_method_id, details, author, created_at, effect, transaction_id, submission_hash
 FROM observation_interpretations
 WHERE account_id = $1 AND observation_id = $2
 ORDER BY version
@@ -230,6 +240,9 @@ func (q *Queries) ListInterpretations(ctx context.Context, arg ListInterpretatio
 			&i.Details,
 			&i.Author,
 			&i.CreatedAt,
+			&i.Effect,
+			&i.TransactionID,
+			&i.SubmissionHash,
 		); err != nil {
 			return nil, err
 		}

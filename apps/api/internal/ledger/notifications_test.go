@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
@@ -29,8 +30,16 @@ func walletPurchase(key, text string) ledger.WalletNotification {
 	}
 }
 
+func (f *fixture) track(account uuid.UUID) {
+	f.t.Helper()
+	if _, err := f.ledger.SetTracking(f.t.Context(), account, true, nil, postedAt.Add(-24*time.Hour)); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 func (f *fixture) ingest(in ledger.WalletNotification) ledger.IngestReceipt {
 	f.t.Helper()
+	f.track(f.account)
 	receipt, err := f.ledger.IngestNotification(f.t.Context(), f.account, in)
 	if err != nil {
 		f.t.Fatalf("IngestNotification() error = %v", err)
@@ -202,6 +211,7 @@ func TestTheSameNotificationKeyIsIndependentPerAccount(t *testing.T) {
 	other := f.newAccount("Outra pessoa")
 
 	mine := f.ingest(notification)
+	f.track(other)
 	theirs, err := f.ledger.IngestNotification(t.Context(), other, notification)
 	if err != nil {
 		t.Fatal(err)
@@ -239,5 +249,29 @@ func TestInvalidNotificationsAreRejected(t *testing.T) {
 	assertValidation(t, err, "posted_at")
 	if got := f.count("wallet_devices"); got != 0 {
 		t.Errorf("devices = %d, want 0 after rejected requests", got)
+	}
+}
+
+func TestNothingIsStoredWhileTrackingIsOff(t *testing.T) {
+	f := newFixture(t)
+	notification := walletPurchase("0|wallet|7|null|10123", "R$ 32,97 com Visa •••• 1234")
+
+	never, err := f.ledger.IngestNotification(t.Context(), f.account, notification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.track(f.account)
+	if _, err := f.ledger.SetTracking(t.Context(), f.account, false, nil, postedAt); err != nil {
+		t.Fatal(err)
+	}
+	paused, err := f.ledger.IngestNotification(t.Context(), f.account, notification)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertReceipt(t, never, ledger.IngestTrackingPaused, 0)
+	assertReceipt(t, paused, ledger.IngestTrackingPaused, 0)
+	if f.count("observations") != 0 || f.count("wallet_devices") != 0 {
+		t.Errorf("observations = %d, devices = %d, want nothing stored", f.count("observations"), f.count("wallet_devices"))
 	}
 }

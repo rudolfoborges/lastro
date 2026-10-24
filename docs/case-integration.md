@@ -71,6 +71,8 @@ Rules that always apply:
 - Classify with list_categories and send category_status "suggested"; use "confirmed" only when Rudolfo said the category.
 - After each call, tell Rudolfo what was recorded and what is pending, using the summary. If the outcome is "failed", nothing was recorded: say so and fix the call. If the result is "possible_duplicate", ask whether it is the same purchase before calling again with confirm_distinct.
 - Use update_transaction, set_category and void_transaction for corrections, always with Rudolfo's reason, and list_clarifications / resolve_clarification for pending questions.
+- Before talking about the spending of a period, call get_coverage_status and tell Rudolfo every limitation it lists. Turn automatic tracking on or off with set_tracking only when he asks.
+- At the start of each conversation, call list_pending_notifications. If anything is pending, read get_instructions topic "notifications" and process the Google Wallet inbox before answering. Never record a notification with record_expense.
 - Never add up amounts yourself.
 ```
 
@@ -144,11 +146,22 @@ The tool arguments are abbreviated; Case always sends a fresh `request_id` per e
 >
 > Case → `resolve_clarification {clarification_id, action: "resolve", note: "Presente de aniversário", purpose: "presente de aniversário"}`
 
+## Google Wallet inbox
+
+Notifications captured by the Android app wait in Lastro as pending until Case interprets them (`list_pending_notifications`, then `submit_notification_interpretations`). The procedure is served by `get_instructions` topic `notifications` (source in `apps/api/internal/mcpserver/instructions/notifications.md`).
+
+Lastro does not depend on what triggers the processing. Two triggers, which can be combined:
+
+- **At the start of each conversation:** the project instructions above tell Case to check the inbox first. It always works, but a purchase only shows up after Rudolfo talks to Case.
+- **A scheduled task in ChatGPT** with a prompt such as "Processe as notificações pendentes do Lastro seguindo get_instructions topic notifications." The interval defines how close to the purchase it appears. ChatGPT's documentation does not say whether scheduled tasks can call write tools of an MCP app, and in October 2026 developers reported such writes being blocked inside tasks. Check it with one real notification before relying on it (decided on #4: Rudolfo takes care of the trigger).
+
+Either way, the coverage status (#30) shows how long the inbox has been waiting.
+
+> Case: Antes de tudo: o Wallet avisou de 2 compras. Registrei R$ 32,97 na Padaria Pão Quente (refeições, sugerida) e R$ 89,90 no Posto Avenida (combustível, sugerida). Os dois no crédito final 1234, provisórios até a fatura.
+
 ## Scheduled routines
 
-Some work has no request from Rudolfo: processing pending notifications (M2, interval chosen by Rudolfo) and, later, the daily summary. They are meant to run as scheduled tasks of Case.
-
-> ⚠️ ChatGPT's documentation does not say whether scheduled tasks can call apps/MCP tools. This must be checked before M2 (#29); if they cannot, notifications are processed whenever Rudolfo talks to Case, and the coverage view (#30) shows when the queue is late.
+Later work without a request from Rudolfo, such as the daily summary, follows the same rule: Lastro computes, and a ChatGPT scheduled task or the next conversation delivers it.
 
 ## Manual test checklist (production)
 
@@ -163,3 +176,7 @@ Run with Case in ChatGPT after connecting it. Use real but harmless expenses and
 - [ ] A Pix without purpose shows up in "quais dúvidas eu tenho?" and is resolved by answering it.
 - [ ] "Apaga esse registro, foi engano" voids it; it disappears from the listing and stays in the history.
 - [ ] Revoking the grant in `/v1/oauth/grants` makes the next call from ChatGPT ask for authorization again.
+- [ ] "Ativa o acompanhamento do Wallet" calls `set_tracking` and the phone's next heartbeat answers `active`; "pausa o acompanhamento" pauses it and the records stay listed.
+- [ ] "Como está a cobertura desta semana?" lists the gaps and the inbox state from `get_coverage_status`.
+- [ ] With a real Wallet notification pending, a new conversation makes Case process the inbox first and report the purchase; resending the same interpretation changes nothing.
+- [ ] A scheduled task that processes the inbox actually records the purchase (if not, keep only the per-conversation trigger).
