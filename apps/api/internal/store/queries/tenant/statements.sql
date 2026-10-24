@@ -131,3 +131,11 @@ WHERE e.account_id = @account_id
   AND e.status = 'confirmed'
   AND v.version = (SELECT max(latest.version) FROM statement_versions latest WHERE latest.account_id = v.account_id AND latest.statement_id = v.statement_id)
 ORDER BY v.created_at, l.position;
+
+-- name: StatementVersionLines :many
+SELECT l.position, l.kind, l.direction, l.amount_minor, l.observation_id, o.source_key, o.payload, e.transaction_id
+FROM statement_lines l
+JOIN observations o ON o.account_id = l.account_id AND o.id = l.observation_id
+LEFT JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+WHERE l.account_id = @account_id AND l.statement_version_id = @statement_version_id
+ORDER BY l.position;

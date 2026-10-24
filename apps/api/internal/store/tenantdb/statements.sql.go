@@ -702,6 +702,60 @@ func (q *Queries) StatementLineTotals(ctx context.Context, arg StatementLineTota
 	return items, nil
 }
 
+const statementVersionLines = `-- name: StatementVersionLines :many
+SELECT l.position, l.kind, l.direction, l.amount_minor, l.observation_id, o.source_key, o.payload, e.transaction_id
+FROM statement_lines l
+JOIN observations o ON o.account_id = l.account_id AND o.id = l.observation_id
+LEFT JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
+WHERE l.account_id = $1 AND l.statement_version_id = $2
+ORDER BY l.position
+`
+
+type StatementVersionLinesParams struct {
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+}
+
+type StatementVersionLinesRow struct {
+	Position      int32
+	Kind          string
+	Direction     string
+	AmountMinor   int64
+	ObservationID uuid.UUID
+	SourceKey     string
+	Payload       []byte
+	TransactionID *uuid.UUID
+}
+
+func (q *Queries) StatementVersionLines(ctx context.Context, arg StatementVersionLinesParams) ([]StatementVersionLinesRow, error) {
+	rows, err := q.db.Query(ctx, statementVersionLines, arg.AccountID, arg.StatementVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StatementVersionLinesRow{}
+	for rows.Next() {
+		var i StatementVersionLinesRow
+		if err := rows.Scan(
+			&i.Position,
+			&i.Kind,
+			&i.Direction,
+			&i.AmountMinor,
+			&i.ObservationID,
+			&i.SourceKey,
+			&i.Payload,
+			&i.TransactionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transactionStatementLines = `-- name: TransactionStatementLines :many
 SELECT l.id, l.account_id, l.statement_version_id, l.observation_id, l.position, l.kind, l.direction, l.amount_minor, l.page, l.excerpt, l.details, v.statement_id, v.version
 FROM transaction_evidence e

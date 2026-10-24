@@ -140,6 +140,29 @@ func TestADryRunShowsTheReviewAndRecordsNothing(t *testing.T) {
 	}
 }
 
+func TestADifferentReadingOfTheSameStatementBecomesANewVersion(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))
+	first := callTool[mcpserver.SubmitStatementExtractionOutput](t, session, "submit_statement_extraction", statementFixture(t), nil)
+	transactions := e.count("transactions")
+	changed := statementFixture(t)
+	fixtureItem(changed, 4)["amount"] = "210.00"
+	changed["total"] = "967.45"
+
+	second := callTool[mcpserver.SubmitStatementExtractionOutput](t, session, "submit_statement_extraction", changed, nil)
+
+	if second.isError || second.out.Result != "new_version" || second.out.Statement.Version != 2 || second.out.Statement.ID != first.out.Statement.ID {
+		t.Fatalf("second reading = %+v %s", second.out, second.text)
+	}
+	diff := second.out.Diff
+	if diff == nil || len(diff.Changed) != 1 || diff.Changed[0].Before.Amount.Amount != "200.00" || diff.Changed[0].After.Amount.Amount != "210.00" || len(diff.Metadata) != 1 {
+		t.Errorf("diff = %+v", diff)
+	}
+	if e.count("transactions") != transactions || *second.out.Lines[4].TransactionID != *first.out.Lines[4].TransactionID {
+		t.Error("a new version duplicated transactions")
+	}
+}
+
 func TestAStatementLineWithoutItsAnchorIsRejectedWithThePathToFix(t *testing.T) {
 	e := newEnv(t)
 	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write", "statements:write"))

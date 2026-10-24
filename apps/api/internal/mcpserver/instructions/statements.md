@@ -20,7 +20,7 @@ Rudolfo sends you the monthly statement PDF. **The PDF never goes to Lastro**: y
 | `previous_balance` | Total of the previous statement, when the summary shows it |
 | `page_count` | Number of pages of the PDF |
 
-The same issuer, card and closing date identify the statement. Resending the same reading changes nothing.
+The same issuer, card and closing date identify the statement. Resending the same reading changes nothing. A different reading of a statement already recorded (a new PDF issued by the bank, or your new reading of the same one) becomes a **new version** of it, never a second statement: send the whole reading again, every line, not only what changed.
 
 ## Lines
 
@@ -81,9 +81,14 @@ You may also link any line (installments and charges too) to a transaction you a
 - `recorded`: done. Each line says its `effect`: `created` (a new transaction), `linked` (an existing one, now confirmed) or `none` (kept only in the statement: installments and unknown lines).
 - `previewed`: the dry run passed; nothing was recorded.
 - `already_recorded`: you had sent the same reading before; nothing changed.
+- `new_version`: the statement was already recorded and this reading differs. `diff` lists the lines added, removed and changed and the summary fields that changed. Nothing is duplicated:
+  - a changed line corrects the same transaction (except what Rudolfo confirmed, which becomes a question);
+  - a removed line keeps its transaction and opens a question;
+  - one more question summarizes the version.
+
+  Tell Rudolfo what changed.
 - `possible_match` (`outcome: "pending"`): nothing was recorded; see above.
 - `outcome: "failed"`: nothing was recorded. `field` points to the problem, such as `items[3].page`; fix it and send the whole reading again.
-  - `statement_version_not_supported`: a different reading of this statement is already recorded. Tell Rudolfo what differs; Lastro does not compare versions yet.
 
 Every answer carries `review`:
 

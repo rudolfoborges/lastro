@@ -105,13 +105,45 @@ type ItemCandidatesOutput struct {
 
 type SubmitStatementExtractionOutput struct {
 	Outcome        Outcome                `json:"outcome"`
-	Result         string                 `json:"result" jsonschema:"recorded, previewed (dry_run: nothing recorded), already_recorded or possible_match"`
+	Result         string                 `json:"result" jsonschema:"recorded, new_version (a different reading of a statement already recorded), previewed (dry_run: nothing recorded), already_recorded or possible_match"`
 	Statement      *StatementOutput       `json:"statement,omitempty"`
 	Review         *StatementReviewOutput `json:"review,omitempty" jsonschema:"composition, computed total and status of the statement"`
+	Diff           *StatementDiffOutput   `json:"diff,omitempty" jsonschema:"for a new version: what changed since the previous one"`
 	Lines          []StatementLineOutput  `json:"lines,omitempty"`
 	Candidates     []ItemCandidatesOutput `json:"candidates,omitempty" jsonschema:"for possible_match: existing transactions that may be the same charge as an item"`
 	Clarifications []ClarificationOutput  `json:"clarifications,omitempty" jsonschema:"open questions about this statement and its transactions"`
 	Summary        string                 `json:"summary"`
+}
+
+type DiffLineOutput struct {
+	Index         int         `json:"index" jsonschema:"position in that version's items, starting at 0"`
+	Kind          string      `json:"kind"`
+	Description   string      `json:"description"`
+	Amount        MoneyOutput `json:"amount"`
+	Date          *string     `json:"date,omitempty"`
+	TransactionID *string     `json:"transaction_id,omitempty"`
+}
+
+type DiffChangeOutput struct {
+	Before DiffLineOutput `json:"before"`
+	After  DiffLineOutput `json:"after"`
+	Fields []string       `json:"fields" jsonschema:"amount and/or kind"`
+}
+
+type MetadataChangeOutput struct {
+	Field  string `json:"field"`
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+type StatementDiffOutput struct {
+	FromVersion int                    `json:"from_version"`
+	ToVersion   int                    `json:"to_version"`
+	Cause       string                 `json:"cause" jsonschema:"reissued (a different PDF), reread (the same PDF read again) or unknown (no file hash on one of the versions)"`
+	Added       []DiffLineOutput       `json:"added,omitempty" jsonschema:"lines only in the new version; they were recorded like any line"`
+	Removed     []DiffLineOutput       `json:"removed,omitempty" jsonschema:"lines no longer in the statement; their transactions stay and a question asks whether they still hold"`
+	Changed     []DiffChangeOutput     `json:"changed,omitempty" jsonschema:"same line with another amount or kind; the same transaction was corrected, never duplicated"`
+	Metadata    []MetadataChangeOutput `json:"metadata,omitempty" jsonschema:"total, dates, previous balance or reading that changed"`
 }
 
 type CompositionGroupOutput struct {
@@ -208,9 +240,6 @@ func (s *Server) registerStatements() {
 		}
 		extraction.DryRun = in.DryRun
 		submission, err := s.deps.Ledger.SubmitStatement(ctx, c.principal.AccountID, extraction, c.receivedAt, c.actor(ledger.AuthorAgent, ""))
-		if errors.Is(err, ledger.ErrStatementVersionUnsupported) {
-			return SubmitStatementExtractionOutput{}, &ToolError{Outcome: OutcomeFailed, Code: "statement_version_not_supported", Message: err.Error()}
-		}
 		if err != nil {
 			return SubmitStatementExtractionOutput{}, err
 		}
@@ -544,6 +573,9 @@ func statementSubmissionOutput(submission ledger.StatementSubmission) SubmitStat
 		}
 		out.Candidates = append(out.Candidates, candidates)
 	}
+	if submission.Diff != nil {
+		out.Diff = diffOutput(*submission.Diff)
+	}
 	if review := submission.Review; review != nil {
 		reviewed := reviewOutput(*review)
 		out.Review = &reviewed
@@ -555,6 +587,35 @@ func statementSubmissionOutput(submission ledger.StatementSubmission) SubmitStat
 		out.Outcome = OutcomePending
 	}
 	out.Summary = statementSummary(submission)
+	return out
+}
+
+func diffOutput(diff ledger.StatementDiff) *StatementDiffOutput {
+	line := func(l ledger.DiffLine) DiffLineOutput {
+		out := DiffLineOutput{Index: l.Position - 1, Kind: string(l.Kind), Description: l.Description, Amount: moneyOutput(l.Amount)}
+		if l.Date != nil {
+			date := l.Date.String()
+			out.Date = &date
+		}
+		if l.TransactionID != nil {
+			id := l.TransactionID.String()
+			out.TransactionID = &id
+		}
+		return out
+	}
+	out := &StatementDiffOutput{FromVersion: diff.FromVersion, ToVersion: diff.ToVersion, Cause: string(diff.Cause)}
+	for _, l := range diff.Added {
+		out.Added = append(out.Added, line(l))
+	}
+	for _, l := range diff.Removed {
+		out.Removed = append(out.Removed, line(l))
+	}
+	for _, change := range diff.Changed {
+		out.Changed = append(out.Changed, DiffChangeOutput{Before: line(change.Before), After: line(change.After), Fields: change.Fields})
+	}
+	for _, change := range diff.Metadata {
+		out.Metadata = append(out.Metadata, MetadataChangeOutput{Field: change.Field, Before: change.Before, After: change.After})
+	}
 	return out
 }
 
@@ -607,6 +668,10 @@ func statementSummary(submission ledger.StatementSubmission) string {
 		return fmt.Sprintf("Nada foi registrado: %d item(ns) podem ser cobranças já registradas pela conversa ou por notificação. Para cada um, envie de novo a leitura inteira com related_transaction_id (mesma compra) ou confirm_distinct (outra compra); pergunte a Rudolfo se não tiver certeza.", len(submission.Candidates))
 	case ledger.StatementAlreadyRecorded:
 		return "Esta leitura da fatura já estava registrada; nada mudou. " + reviewSummary(*submission.Review)
+	case ledger.StatementNewVersion:
+		diff := submission.Diff
+		return fmt.Sprintf("A fatura já estava registrada e esta leitura é diferente: virou a versão %d. %d linha(s) nova(s), %d removida(s) e %d alterada(s); nenhum lançamento foi duplicado e as diferenças viraram dúvidas para Rudolfo conferir. %s",
+			diff.ToVersion, len(diff.Added), len(diff.Removed), len(diff.Changed), reviewSummary(*submission.Review))
 	}
 	statement := submission.Statement
 	counts := map[ledger.InterpretationEffect]int{}
