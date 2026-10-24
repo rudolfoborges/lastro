@@ -109,6 +109,15 @@ type Invite struct {
 	AccountID  *uuid.UUID
 }
 
+type MatchRejection struct {
+	AccountID uuid.UUID
+	LowID     uuid.UUID
+	HighID    uuid.UUID
+	Reason    string
+	Author    string
+	CreatedAt time.Time
+}
+
 type OauthAuthorizationCode struct {
 	ID            uuid.UUID
 	CodeHash      []byte
@@ -312,6 +321,22 @@ type TransactionEvidence struct {
 	Reasons       []string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+type TransactionMerge struct {
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	SurvivorID     uuid.UUID
+	MergedID       uuid.UUID
+	MergedStatus   string
+	ObservationIds []uuid.UUID
+	RefundIds      []uuid.UUID
+	Changes        []byte
+	Reason         string
+	Author         string
+	CreatedAt      time.Time
+	UndoneAt       *time.Time
+	UndoReason     *string
 }
 
 type WalletDevice struct {

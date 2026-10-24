@@ -198,7 +198,7 @@ func TestFindingMatchesExplainsReasonsAndDifferences(t *testing.T) {
 	f := newFixture(t)
 	charged := f.submitStatement(bakeryStatement()).Lines[0]
 	report := bakeryReport("message-1")
-	report.ConfirmDistinct = true
+	report.DateReference, report.OccurredOn = nil, day("2026-10-19")
 	told := f.record(report).Transaction
 
 	byTransaction := f.findMatches(ledger.MatchRef{TransactionID: &told.ID})
@@ -211,7 +211,7 @@ func TestFindingMatchesExplainsReasonsAndDifferences(t *testing.T) {
 	if !hasText(candidate.Reasons, "mesmo valor") || !hasText(candidate.Reasons, "mesmo meio de pagamento") {
 		t.Errorf("reasons = %v, want the amount and the payment method", candidate.Reasons)
 	}
-	if !hasText(candidate.Differences, "nome diferente") || !hasText(candidate.Differences, "1 dia antes") {
+	if !hasText(candidate.Differences, "nome diferente") || !hasText(candidate.Differences, "4 dias antes") {
 		t.Errorf("differences = %v, want the name and the day apart", candidate.Differences)
 	}
 	if byLine.Transaction.ID != charged.Transaction.ID || len(byLine.Candidates) != 1 || byLine.Candidates[0].Transaction.ID != told.ID {

@@ -66,6 +66,7 @@ type ExpenseReport struct {
 	Installments         *Installments
 	RelatedTransactionID *uuid.UUID
 	ConfirmDistinct      bool
+	DeferMatch           bool
 }
 
 type ExpenseOutcome struct {
@@ -139,15 +140,17 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		return recordedExpense{}, err
 	}
 	fingerprint := repetitionFingerprint(report)
-	if !report.ConfirmDistinct && report.RelatedTransactionID == nil {
-		if err := t.checkRepetition(report, fingerprint, loc); err != nil {
+	var candidates []MatchCandidate
+	if report.RelatedTransactionID == nil {
+		if !report.ConfirmDistinct && !report.DeferMatch {
+			if err := t.checkRepetition(report, fingerprint, loc); err != nil {
+				return recordedExpense{}, err
+			}
+		}
+		if candidates, err = t.findCandidates(conversationProbe(report, occurred, loc), loc); err != nil {
 			return recordedExpense{}, err
 		}
-		candidates, err := t.findCandidates(conversationProbe(report, occurred, loc), loc)
-		if err != nil {
-			return recordedExpense{}, err
-		}
-		if len(candidates) > 0 {
+		if len(candidates) > 0 && !report.ConfirmDistinct && !report.DeferMatch {
 			return recordedExpense{}, &pendingExpense{outcome: ExpenseOutcome{Result: ExpensePossibleMatch, Candidates: candidates, Location: loc}}
 		}
 	}
@@ -223,6 +226,9 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		return recordedExpense{}, err
 	}
 	if err := t.categorizeReport(created, report, actor, false); err != nil {
+		return recordedExpense{}, err
+	}
+	if err := t.settleCandidates(created, candidates, report.DeferMatch, actor); err != nil {
 		return recordedExpense{}, err
 	}
 	if err := t.refreshClarifications(created.ID); err != nil {
@@ -468,6 +474,9 @@ func normalizeReport(report ExpenseReport) (ExpenseReport, error) {
 	}
 	if report.RelatedTransactionID != nil && report.ConfirmDistinct {
 		return report, &ValidationError{Field: "confirm_distinct", Message: "cannot be sent with related_transaction_id"}
+	}
+	if report.DeferMatch && (report.RelatedTransactionID != nil || report.ConfirmDistinct) {
+		return report, &ValidationError{Field: "defer_match", Message: "is for when you cannot decide; leave it out with related_transaction_id or confirm_distinct"}
 	}
 	return report, nil
 }

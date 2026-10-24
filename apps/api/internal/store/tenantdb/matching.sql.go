@@ -53,6 +53,12 @@ WHERE t.account_id = $1
       WHERE e.account_id = t.account_id AND e.transaction_id = t.id AND e.status = 'confirmed'
         AND o.source = ANY($13::text[])
   )
+  AND NOT EXISTS (
+      SELECT FROM match_rejections r
+      WHERE r.account_id = t.account_id
+        AND ((r.low_id = t.id AND r.high_id = ANY($3::uuid[]))
+             OR (r.high_id = t.id AND r.low_id = ANY($3::uuid[])))
+  )
 ORDER BY t.occurred_on NULLS LAST, t.created_at, t.id
 LIMIT 5
 `

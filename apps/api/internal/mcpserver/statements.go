@@ -42,6 +42,7 @@ type StatementItemInput struct {
 	RelatedTransactionID string                    `json:"related_transaction_id,omitempty" jsonschema:"existing transaction that is this same charge (from the conversation or a notification)"`
 	RefundOfID           string                    `json:"refund_of_id,omitempty" jsonschema:"for refund: the purchase it returns money from"`
 	ConfirmDistinct      bool                      `json:"confirm_distinct,omitempty" jsonschema:"true when a possible_match candidate is a different purchase"`
+	DeferMatch           bool                      `json:"defer_match,omitempty" jsonschema:"true when you cannot decide on a possible_match now: Lastro records it apart, pending clarification, and opens a possible_match question for Rudolfo"`
 	Question             string                    `json:"question,omitempty" jsonschema:"for unknown: what to ask Rudolfo, in Portuguese"`
 }
 
@@ -491,6 +492,7 @@ func statementItem(in StatementItemInput, currency string) (ledger.StatementItem
 		Category:            optionalString(in.Category),
 		Purpose:             optionalString(in.Purpose),
 		ConfirmDistinct:     in.ConfirmDistinct,
+		DeferMatch:          in.DeferMatch,
 		Question:            in.Question,
 	}
 	var err error

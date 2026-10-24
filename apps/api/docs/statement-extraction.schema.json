@@ -113,6 +113,10 @@
             "description": "date printed on the line, YYYY-MM-DD; take the year from the statement cycle",
             "type": "string"
           },
+          "defer_match": {
+            "description": "true when you cannot decide on a possible_match now: Lastro records it apart, pending clarification, and opens a possible_match question for Rudolfo",
+            "type": "boolean"
+          },
           "description": {
             "description": "short readable description in Portuguese; the original description when omitted",
             "type": "string"

@@ -224,7 +224,7 @@ Questions for Rudolfo are rows in `clarifications` (kind, target transaction or 
 - `field_conflict`: Case, a rule or the system tried to change a field Rudolfo confirmed; the context carries the current and proposed values, and it closes when Rudolfo changes that field himself.
 - Voiding a transaction dismisses its open questions.
 
-Resolving needs the missing data (categories or purpose), which is applied as Rudolfo's correction; dismissing changes nothing. Both are written to the transaction history. The other kinds (`possible_match`, `reading_doubt`, `statement_*`…) are opened by the notification, statement and reconciliation features.
+Resolving needs the missing data (categories or purpose), which is applied as Rudolfo's correction; dismissing changes nothing, except for `possible_match`, where it rejects the candidates (see [Matching sources](#matching-sources)). Both are written to the transaction history. The other kinds (`possible_match`, `reading_doubt`, `statement_*`…) are opened by the notification, statement and reconciliation features.
 
 ### Wallet notifications
 
@@ -300,6 +300,21 @@ The same purchase may arrive from the conversation, from Google Wallet and from 
 - **Explanation:** every candidate carries its `sources` and, in pt-BR, `reasons` (same amount, same date, same card or payment method, same merchant) and `differences` (another name, days apart, another card, missing payment method). Merchant names are compared only after case, accents and punctuation are folded; acquirer prefixes and aliases are Case's call.
 - **Where:** `record_expense`, `submit_notification_interpretations` and `submit_statement_extraction` answer `possible_match` and write nothing until Case decides with `related_transaction_id` or `confirm_distinct`. `find_match_candidates` searches on demand from a transaction or from an observation that is evidence of one.
 - **Invariants:** a transaction has at most one confirmed observation per source: one conversation report, one Google Wallet notification (its versions are the same notification) and one statement line, except installment lines, which charge the same purchase once per cycle. Linking anything else is refused. The amount never adds up evidence.
+- **Deferring (#39):** with `defer_match`, an item that has candidates is recorded on its own transaction with status `pending_clarification` and a `possible_match` clarification whose context lists the candidates (`candidate_ids`). The status returns to the payment-method rule when the question is settled: a merge resolves it, and rejecting every candidate (or dismissing the question) closes it. Resolving it with `resolve_clarification` is refused: the answer to "same purchase" is `confirm_match`.
+- **Merging (`confirm_match`):**
+  - **Survivor:** the transaction confirmed by a statement line, else by a notification, else the oldest.
+  - **Evidence:** every confirmed observation of the other one moves to the survivor (`undone` on the old link). The other transaction becomes `merged` with `merged_into_id`; nothing is deleted.
+  - **Fields:** missing ones (merchant, payee, purpose, card, date, installments) are filled from the merged one and keep Rudolfo's provenance. A field he confirmed with different values on each side becomes a `field_conflict`.
+  - **Category:** a confirmed category wins over a suggestion; two different confirmed categories become a conflict.
+  - **Refunds:** refunds of the merged one point to the survivor, still never above its amount.
+  - **Refusals:** two records of the same source, different natures, different currencies without a matching original amount, or a purchase with its own refund.
+  - **History:** `transaction_merges` keeps the moved observations, the refunds and every change to the survivor, for undo.
+- **Rejecting (`reject_match`):** stores the pair in `match_rejections`, and candidates never include a rejected pair again. `confirm_distinct` on any submission also rejects the candidates it was shown.
+- **Undoing (`undo_match`):**
+  - **Merges:** an observation moved by a merge undoes the whole merge. Both transactions come back with their evidence, status and refunds, and the survivor's fields return to their values before the merge unless they changed since.
+  - **Links made at submission:** an observation linked by a submission is separated. The fields that link changed are reverted the same way, and the observation gets its own transaction rebuilt from its interpretation or statement line, unless it is an installment line, which only stops confirming the transaction.
+  - **Limits:** the observation that created a transaction cannot be separated from it, and fields Rudolfo confirmed are never reverted.
+  - **Afterwards:** the pair becomes rejected.
 
 ### What the app sees
 
@@ -406,6 +421,9 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_statement_review` | `expenses:read` | Composition, computed versus printed total, status and pending items of a statement |
 | `get_statement_line_source` | `expenses:read` | Page and excerpt of a statement line, by transaction or by statement and index |
 | `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
+| `confirm_match` | `expenses:write` | Merges two open transactions of the same purchase; the other one is kept as `merged` |
+| `reject_match` | `expenses:write` | Records that two transactions are different purchases, so they are never offered again |
+| `undo_match` | `expenses:write` | Separates a record linked by mistake (a merge or a link made at submission), restoring the original data |
 
 Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` and `submit_statement_extraction` are the exceptions: the first is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)), the second by the statement identity and the content of the reading (see [Statements](#statements)).
 

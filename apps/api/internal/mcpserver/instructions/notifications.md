@@ -38,7 +38,7 @@ The coverage status shows Rudolfo how long the inbox has been waiting, so a queu
 5. **Purchases already recorded.** Send `purchase` without `related_transaction_id` first. When a transaction with the same amount and a close date exists (from the conversation or a statement), Lastro answers `possible_match` with candidates, their `reasons` and their `differences` (see `get_instructions` topic `matching`). Then:
    - same purchase (same amount, same day, compatible merchant): send the item again with `related_transaction_id`. Lastro links the notification and fills the card, the exact time and missing fields, and keeps what Rudolfo said;
    - a different purchase: send it again with `confirm_distinct: true`;
-   - not sure: ask Rudolfo. Two purchases of the same amount on the same day can both be real.
+   - not sure: ask Rudolfo. Two purchases of the same amount on the same day can both be real. If you are processing the inbox without him, send it with `defer_match: true`: it is recorded apart, pending clarification, with a `possible_match` question for him.
 6. Send everything in one `submit_notification_interpretations` call (up to 50 items). Each item is applied on its own.
 7. Tell Rudolfo briefly what was recorded, using each `summary`, and ask the open questions.
 
