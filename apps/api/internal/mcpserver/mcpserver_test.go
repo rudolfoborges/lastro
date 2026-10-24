@@ -166,9 +166,9 @@ func TestInstructionsAreAvailableAsAToolAndAsPrompts(t *testing.T) {
 	if got.isError || !strings.Contains(got.out.Content, "request_id") {
 		t.Fatalf("get_instructions(conversation) = %+v", got)
 	}
-	invalid := callTool[mcpserver.GetInstructionsOutput](t, session, "get_instructions", map[string]any{"topic": "statements"}, nil)
+	invalid := callTool[mcpserver.GetInstructionsOutput](t, session, "get_instructions", map[string]any{"topic": "reports"}, nil)
 	if !invalid.isError {
-		t.Error("get_instructions(statements) succeeded, want a validation error")
+		t.Error("get_instructions(reports) succeeded, want a validation error")
 	}
 
 	prompt, err := session.GetPrompt(t.Context(), &mcp.GetPromptParams{Name: "classification_policy"})

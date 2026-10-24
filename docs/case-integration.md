@@ -11,7 +11,7 @@ Case is Rudolfo's AI assistant and runs on ChatGPT. Case talks to Rudolfo, under
 | MCP server URL | `https://api-production-9ee63.up.railway.app/mcp` |
 | Transport | Streamable HTTP |
 | Authentication | OAuth 2.1 (ChatGPT discovers it from the server) |
-| Scopes Case needs | `expenses:read`, `expenses:write` (`statements:write` only when statements arrive, M3) |
+| Scopes Case needs | `expenses:read`, `expenses:write`, `statements:write` |
 
 ### First time: create the account
 
@@ -73,6 +73,7 @@ Rules that always apply:
 - Use update_transaction, set_category and void_transaction for corrections, always with Rudolfo's reason, and list_clarifications / resolve_clarification for pending questions.
 - Before talking about the spending of a period, call get_coverage_status and tell Rudolfo every limitation it lists. Turn automatic tracking on or off with set_tracking only when he asks.
 - At the start of each conversation, call list_pending_notifications. If anything is pending, read get_instructions topic "notifications" and process the Google Wallet inbox before answering. Never record a notification with record_expense.
+- When Rudolfo sends a credit card statement PDF, read get_instructions topic "statements", read every page yourself and send only the structured reading with submit_statement_extraction. Never send the PDF to Lastro and never record statement lines with record_expense.
 - Never add up amounts yourself.
 ```
 
@@ -158,6 +159,20 @@ Lastro does not depend on what triggers the processing. Two triggers, which can 
 Either way, the coverage status (#30) shows how long the inbox has been waiting.
 
 > Case: Antes de tudo: o Wallet avisou de 2 compras. Registrei R$ 32,97 na Padaria Pão Quente (refeições, sugerida) e R$ 89,90 no Posto Avenida (combustível, sugerida). Os dois no crédito final 1234, provisórios até a fatura.
+
+## Credit card statements
+
+Rudolfo sends the monthly statement PDF to Case in the conversation. Case reads it (every page, dates from the content), and submits only the structured reading with `submit_statement_extraction`: identity, dates, printed total, previous balance and every line with its page and excerpt. The procedure is served by `get_instructions` topic `statements` (source in `apps/api/internal/mcpserver/instructions/statements.md`); the contract is `apps/api/docs/statement-extraction.schema.json`.
+
+> Rudolfo: (envia a fatura em PDF)
+>
+> Case → `get_instructions {topic: "statements"}`, then `submit_statement_extraction {issuer, card_last4, closing_date, due_date, total, previous_balance, reading: "complete", items: [...]}`
+>
+> Lastro → `possible_match`: o item 1 (R$ 32,97, Padaria Exemplo, 14/09) pode ser a compra que Rudolfo contou na conversa.
+>
+> Case → envia a leitura de novo com `related_transaction_id` no item 1.
+>
+> Case: Registrei a fatura de outubro do cartão final 1234: 12 itens, 9 lançamentos novos, a padaria que você já tinha me contado agora está confirmada, e 3 itens ficam só na fatura (2 parcelas e 1 crédito que não entendi). Uma dúvida: o que é o crédito "AJ CRED 0001" de R$ 12,34 em 28/09?
 
 ## Scheduled routines
 

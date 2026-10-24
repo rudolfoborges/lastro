@@ -78,6 +78,7 @@ type Clarification struct {
 	ResolvedAt    *time.Time
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	StatementID   *uuid.UUID
 }
 
 type FieldProvenance struct {
@@ -214,6 +215,51 @@ type Revision struct {
 	ActorRef      *string
 	ObservationID *uuid.UUID
 	CreatedAt     time.Time
+}
+
+type Statement struct {
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	Issuer          string
+	IssuerKey       string
+	CardLast4       string
+	ClosingDate     time.Time
+	PaymentMethodID uuid.UUID
+	CreatedAt       time.Time
+}
+
+type StatementLine struct {
+	ID                 uuid.UUID
+	AccountID          uuid.UUID
+	StatementVersionID uuid.UUID
+	ObservationID      uuid.UUID
+	Position           int32
+	Kind               string
+	Direction          string
+	AmountMinor        int64
+	Page               int32
+	Excerpt            string
+	Details            []byte
+}
+
+type StatementVersion struct {
+	ID                   uuid.UUID
+	AccountID            uuid.UUID
+	StatementID          uuid.UUID
+	Version              int32
+	IssueDate            *time.Time
+	DueDate              time.Time
+	PeriodStart          *time.Time
+	PeriodEnd            *time.Time
+	Currency             string
+	InformedTotalMinor   int64
+	PreviousBalanceMinor *int64
+	Reading              string
+	Missing              *string
+	PageCount            *int32
+	FileSha256           []byte
+	ContentHash          []byte
+	CreatedAt            time.Time
 }
 
 type ToolCall struct {

@@ -1,6 +1,6 @@
 -- name: InsertClarification :exec
-INSERT INTO clarifications (id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status)
-VALUES (@id, @account_id, @kind, sqlc.narg(transaction_id), sqlc.narg(observation_id), @subject, @dedup_key, @question, @context, 'open')
+INSERT INTO clarifications (id, account_id, kind, transaction_id, observation_id, statement_id, subject, dedup_key, question, context, status)
+VALUES (@id, @account_id, @kind, sqlc.narg(transaction_id), sqlc.narg(observation_id), sqlc.narg(statement_id), @subject, @dedup_key, @question, @context, 'open')
 ON CONFLICT (account_id, dedup_key) WHERE status = 'open' DO NOTHING;
 
 -- name: GetOpenClarificationByDedupKey :one
@@ -43,3 +43,9 @@ SELECT EXISTS (
     SELECT FROM clarifications
     WHERE account_id = @account_id AND dedup_key = @dedup_key AND status = 'dismissed'
 );
+
+-- name: OpenStatementClarifications :many
+SELECT *
+FROM clarifications
+WHERE account_id = @account_id AND statement_id = @statement_id AND status = 'open'
+ORDER BY created_at, id;
