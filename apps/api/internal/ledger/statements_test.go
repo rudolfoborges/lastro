@@ -41,8 +41,10 @@ func syntheticStatement() ledger.StatementExtraction {
 	iof.Category = ptr("financial_charges")
 	installment := line(ledger.ItemInstallment, "LOJA DE MOVEIS 03/10", 10000, "2026-07-02", 2)
 	installment.Installment = &ledger.InstallmentPosition{Number: 3, Count: 10}
+	installment.Category = ptr("home")
 	pix := line(ledger.ItemPixInstallment, "PIX PARCELADO 02/12", 50000, "2026-08-10", 4)
 	pix.Installment = &ledger.InstallmentPosition{Number: 2, Count: 12}
+	pix.Category = ptr("home")
 	pix.Components = []ledger.ChargeComponent{
 		{Kind: ledger.ComponentPrincipal, Amount: brl(45000), Included: true},
 		{Kind: ledger.ComponentInterest, Amount: brl(5000), Included: true},
@@ -102,8 +104,8 @@ func TestACompleteStatementBecomesLinesWithTheirAnchors(t *testing.T) {
 		}
 		effects[l.Kind] = append(effects[l.Kind], l.Effect)
 	}
-	if effects[ledger.ItemInstallment][0] != ledger.EffectNone || effects[ledger.ItemPixInstallment][0] != ledger.EffectNone || effects[ledger.ItemUnknown][0] != ledger.EffectNone {
-		t.Errorf("effects = %v; installments and unknown lines never become transactions in M3", effects)
+	if effects[ledger.ItemInstallment][0] != ledger.EffectCreated || effects[ledger.ItemPixInstallment][0] != ledger.EffectCreated || effects[ledger.ItemUnknown][0] != ledger.EffectNone {
+		t.Errorf("effects = %v; installments become purchases with their plan and unknown lines stay only in the statement", effects)
 	}
 	natures := map[ledger.Nature]int{}
 	for _, l := range out.Lines {
@@ -115,7 +117,7 @@ func TestACompleteStatementBecomesLinesWithTheirAnchors(t *testing.T) {
 			t.Errorf("transaction = %+v, want confirmed with the statement date", l.Transaction)
 		}
 	}
-	if natures[ledger.NatureExpense] != 3 || natures[ledger.NatureCharge] != 2 || natures[ledger.NaturePayment] != 1 || natures[ledger.NatureRefund] != 1 {
+	if natures[ledger.NatureExpense] != 5 || natures[ledger.NatureCharge] != 2 || natures[ledger.NaturePayment] != 1 || natures[ledger.NatureRefund] != 1 {
 		t.Errorf("natures = %v", natures)
 	}
 	if card := out.Lines[6].Transaction.PaymentMethod.CardLast4; card == nil || *card != "5678" {

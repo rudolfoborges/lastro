@@ -134,11 +134,48 @@ func (s *statementSubmitter) resubmitted(statement tenantdb.Statement, hash []by
 	if !bytes.Equal(version.ContentHash, hash) {
 		return s.newVersion(statement, version, hash)
 	}
+	if err := s.planInstallments(statement); err != nil {
+		return StatementSubmission{}, err
+	}
 	lines, err := s.t.statementLines(version.ID)
 	if err != nil {
 		return StatementSubmission{}, err
 	}
 	return s.submission(StatementAlreadyRecorded, statement, version, lines)
+}
+
+// planInstallments gives installment lines recorded before installment plans
+// existed their purchase and plan when the same reading is sent again.
+func (s *statementSubmitter) planInstallments(statement tenantdb.Statement) error {
+	for i, item := range s.in.Items {
+		if !item.Kind.installment() {
+			continue
+		}
+		observation, err := s.t.q.GetObservationBySourceKey(s.t.ctx, tenantdb.GetObservationBySourceKeyParams{AccountID: s.t.accountID, Source: string(SourceStatementLine), SourceKey: s.identities[i].sourceKey(statement.ID)})
+		if err != nil {
+			return fmt.Errorf("find installment line: %w", err)
+		}
+		transactionID, err := s.t.q.ObservationTransaction(s.t.ctx, tenantdb.ObservationTransactionParams{AccountID: s.t.accountID, ObservationID: observation.ID})
+		switch {
+		case err == nil:
+			plan, err := s.t.planRow(transactionID)
+			if err != nil {
+				return err
+			}
+			if plan == nil {
+				if err := s.charge(statement, transactionID, observation.ID, item); err != nil {
+					return prefixed(fmt.Sprintf("items[%d].", i), err)
+				}
+			}
+			continue
+		case !errors.Is(err, pgx.ErrNoRows):
+			return fmt.Errorf("transaction of an installment line: %w", err)
+		}
+		if _, err := s.installment(statement, observation.ID, item, false); err != nil {
+			return prefixed(fmt.Sprintf("items[%d].", i), err)
+		}
+	}
+	return nil
 }
 
 func (s *statementSubmitter) insertVersion(statementID uuid.UUID, number int32, hash []byte) (tenantdb.StatementVersion, error) {
@@ -277,12 +314,12 @@ func (s *statementSubmitter) lineCard(item StatementItem) string {
 
 func (s *statementSubmitter) apply(statement tenantdb.Statement, observationID uuid.UUID, item StatementItem) (StatementLine, error) {
 	switch {
+	case item.Kind.installment():
+		return s.installment(statement, observationID, item, true)
 	case item.RelatedTransactionID != nil:
 		return s.link(observationID, item)
 	case item.Kind == ItemUnknown:
 		return StatementLine{Effect: EffectNone}, s.t.openClarification(s.unknownItem(statement.ID, observationID, item))
-	case item.Kind.installment():
-		return StatementLine{Effect: EffectNone}, nil
 	default:
 		return s.create(observationID, item)
 	}
@@ -350,6 +387,10 @@ func (s *statementSubmitter) create(observationID uuid.UUID, item StatementItem)
 }
 
 func (s *statementSubmitter) link(observationID uuid.UUID, item StatementItem) (StatementLine, error) {
+	return s.linkWith(observationID, item, OriginAgent, "same transaction, identified by Case")
+}
+
+func (s *statementSubmitter) linkWith(observationID uuid.UUID, item StatementItem, origin Origin, reason string) (StatementLine, error) {
 	transactionID := *item.RelatedTransactionID
 	current, err := s.t.lockOpenTransaction(transactionID)
 	switch {
@@ -372,7 +413,7 @@ func (s *statementSubmitter) link(observationID uuid.UUID, item StatementItem) (
 			return StatementLine{}, &ValidationError{Field: "related_transaction_id", Message: "is already charged by another statement line; two statement lines are two charges"}
 		}
 	}
-	if _, err := s.t.linkEvidence(transactionID, observationID, EvidenceLink{Status: EvidenceConfirmed, Origin: OriginAgent, Reasons: []string{"same transaction, identified by Case"}}); err != nil {
+	if _, err := s.t.linkEvidence(transactionID, observationID, EvidenceLink{Status: EvidenceConfirmed, Origin: origin, Reasons: []string{reason}}); err != nil {
 		return StatementLine{}, err
 	}
 	actor := s.actor
@@ -460,10 +501,16 @@ func (s *statementSubmitter) candidates(eligible func(index int) bool) ([]ItemCa
 	}
 	var out []ItemCandidates
 	for i, item := range s.in.Items {
-		if (item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct || item.DeferMatch || !eligible(i) {
+		if !item.Kind.matchable() || item.RelatedTransactionID != nil || item.ConfirmDistinct || item.DeferMatch || !eligible(i) {
 			continue
 		}
-		found, err := s.itemCandidates(item, linked)
+		var found []MatchCandidate
+		var err error
+		if item.Kind.installment() {
+			found, err = s.installmentCandidates(item)
+		} else {
+			found, err = s.itemCandidates(item, linked)
+		}
 		if err != nil {
 			return nil, err
 		}

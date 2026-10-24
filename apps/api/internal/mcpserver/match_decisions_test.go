@@ -67,3 +67,21 @@ func TestCaseCanDeferANotificationMatchToRudolfo(t *testing.T) {
 		t.Errorf("list_clarifications = %+v (%s)", questions.out, questions.text)
 	}
 }
+
+func TestCaseSeesTheInstallmentPlanOfAPurchase(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write"))
+	told := supermarket("message-1")
+	told["amount"], told["raw_text"], told["installment_count"], told["installment_amount"] = "1200.00", "TV de 1.200 em 12x de 100", 12, "100.00"
+	recorded := callTool[mcpserver.RecordExpenseOutput](t, session, "record_expense", told, chatgpt).out.Transaction
+
+	got := callTool[mcpserver.TransactionDetailOutput](t, session, "get_transaction", map[string]any{"transaction_id": recorded.ID}, nil)
+
+	plan := got.out.InstallmentPlan
+	if got.isError || plan == nil || plan.Count != 12 || plan.Total == nil || plan.Total.Amount != "1200.00" || plan.Remaining.Amount != "1200.00" || len(plan.Installments) != 12 {
+		t.Fatalf("get_transaction = %+v (%s)", got.out, got.text)
+	}
+	if plan.Installments[0].State != "known_future" || got.out.Transaction.AmountBasis != "total" {
+		t.Errorf("plan = %+v, transaction = %+v", plan, got.out.Transaction)
+	}
+}

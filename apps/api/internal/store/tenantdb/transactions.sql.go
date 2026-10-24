@@ -13,7 +13,7 @@ import (
 )
 
 const getTransaction = `-- name: GetTransaction :one
-SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 FROM transactions
 WHERE account_id = $1 AND id = $2
 `
@@ -51,6 +51,7 @@ func (q *Queries) GetTransaction(ctx context.Context, arg GetTransactionParams) 
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }
@@ -84,15 +85,15 @@ const insertTransaction = `-- name: InsertTransaction :one
 INSERT INTO transactions (
     id, account_id, original_description, description, merchant, payee, amount_minor, currency,
     original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source,
-    payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id
+    payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, amount_basis
 )
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
     $9, $10, $11, $12,
     $13, $14, $15, $16, $17, $18,
-    $19, $20, $21
+    $19, $20, $21, $22
 )
-RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 `
 
 type InsertTransactionParams struct {
@@ -117,6 +118,7 @@ type InsertTransactionParams struct {
 	InstallmentCount       *int32
 	InstallmentAmountMinor *int64
 	RefundOfID             *uuid.UUID
+	AmountBasis            string
 }
 
 func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionParams) (Transaction, error) {
@@ -142,6 +144,7 @@ func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionPa
 		arg.InstallmentCount,
 		arg.InstallmentAmountMinor,
 		arg.RefundOfID,
+		arg.AmountBasis,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -169,6 +172,7 @@ func (q *Queries) InsertTransaction(ctx context.Context, arg InsertTransactionPa
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }
@@ -209,7 +213,7 @@ func (q *Queries) ListPaymentMethods(ctx context.Context, accountID uuid.UUID) (
 }
 
 const listTransactions = `-- name: ListTransactions :many
-SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at
+SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at, t.amount_basis
 FROM transactions t
 LEFT JOIN payment_methods pm ON pm.account_id = t.account_id AND pm.id = t.payment_method_id
 WHERE t.account_id = $1
@@ -292,6 +296,7 @@ func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsPara
 			&i.MergedIntoID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AmountBasis,
 		); err != nil {
 			return nil, err
 		}
@@ -304,7 +309,7 @@ func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsPara
 }
 
 const lockTransaction = `-- name: LockTransaction :one
-SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+SELECT id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 FROM transactions
 WHERE account_id = $1 AND id = $2
 FOR UPDATE
@@ -343,6 +348,7 @@ func (q *Queries) LockTransaction(ctx context.Context, arg LockTransactionParams
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }
@@ -366,9 +372,10 @@ SET description = $1,
     purpose = $15,
     installment_count = $16,
     installment_amount_minor = $17,
+    amount_basis = $18,
     updated_at = now()
-WHERE account_id = $18 AND id = $19
-RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+WHERE account_id = $19 AND id = $20
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 `
 
 type UpdateTransactionParams struct {
@@ -389,6 +396,7 @@ type UpdateTransactionParams struct {
 	Purpose                *string
 	InstallmentCount       *int32
 	InstallmentAmountMinor *int64
+	AmountBasis            string
 	AccountID              uuid.UUID
 	ID                     uuid.UUID
 }
@@ -412,6 +420,7 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		arg.Purpose,
 		arg.InstallmentCount,
 		arg.InstallmentAmountMinor,
+		arg.AmountBasis,
 		arg.AccountID,
 		arg.ID,
 	)
@@ -441,6 +450,7 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }

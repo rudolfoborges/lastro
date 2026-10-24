@@ -53,9 +53,18 @@ Send **every line** of the statement in `items`, in the order printed, including
 - `category`: a suggestion, as in the classification policy. Use `financial_charges` for interest, fees and taxes. Payments and credits need no category.
 - `purpose` only when Rudolfo told you.
 
-Leave out what is not a charge: the "próximas faturas" or future installments table, interest and CET simulations, minimum payment and financing offers. Previous balance goes in `previous_balance`, not in `items`.
+Leave out what is not a charge: the "próximas faturas" or future installments table, interest and CET simulations, minimum payment and financing offers. Previous balance goes in `previous_balance`, not in `items`. When the future installments table lists the next installments **of a specific purchase**, send them in that purchase's line as `future_installments` (`number` and `amount`); never project them yourself.
 
-Installments (`installment`, `pix_installment`) stay on the statement until Lastro models installment plans: they count in the statement but do not create purchases. When Rudolfo told you about that purchase in the conversation ("12x de 100"), link the installment to that transaction with `related_transaction_id`.
+## Installments
+
+Every "n/N" line (`installment`, `pix_installment`) is one installment of a purchase. It counts in the statement with its own amount, and it belongs to that purchase's installment plan; the full purchase is never added to the statement again.
+
+- **Chained by Lastro:** when the card, the printed description, N and the amount match exactly one plan whose installment n−1 was charged in an earlier statement, Lastro links the line to that purchase by itself (`linked`).
+- **Your decision:** otherwise, when there are plans or purchases that may be the same one, such as a TV Rudolfo told you he bought "em 12x de 100", Lastro answers `possible_match`. Use `related_transaction_id` for the same purchase, `confirm_distinct` for another, or `defer_match` when only Rudolfo can tell.
+- **A purchase seen only on the statement:** Lastro creates it from the line (`created`). The purchase date is the line date, and `amount_basis` is `installment`: only the installment amount is known, and the total is **never** multiplied out. Its plan estimates the next installments from the one charged. When Rudolfo tells the total, correct the amount with `update_transaction`; it becomes the total of the plan.
+- **Statements recorded before installment plans existed** kept their installment lines without a purchase. Sending the same reading again (`already_recorded`) gives those lines their purchase and plan.
+
+`get_transaction` shows the plan of a purchase: installments charged, still to come (`known_future` or `estimated`), and `remaining`, with the date of the information.
 
 ## Doubts and partial readings
 
@@ -78,7 +87,7 @@ You may also link any line (installments and charges too) to a transaction you a
 
 ## Reading the answer
 
-- `recorded`: done. Each line says its `effect`: `created` (a new transaction), `linked` (an existing one, now confirmed) or `none` (kept only in the statement: installments and unknown lines).
+- `recorded`: done. Each line says its `effect`: `created` (a new transaction, including a purchase seen only through its installment), `linked` (an existing one, now confirmed, or the next installment of a plan) or `none` (kept only in the statement: unknown lines).
 - `previewed`: the dry run passed; nothing was recorded.
 - `already_recorded`: you had sent the same reading before; nothing changed.
 - `new_version`: the statement was already recorded and this reading differs. `diff` lists the lines added, removed and changed and the summary fields that changed. Nothing is duplicated:

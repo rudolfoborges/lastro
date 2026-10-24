@@ -17,6 +17,7 @@ import (
 
 const (
 	fieldMatch           = "match"
+	fieldPlan            = "installment_plan"
 	subjectMatch         = "match"
 	reasonDistinct       = "Case confirmou que são compras diferentes."
 	reasonMergedQuestion = "Mesma compra: os lançamentos foram fundidos."
@@ -317,6 +318,14 @@ func (t *tx) absorb(survivor, merged Transaction, reason string, actor Actor, re
 			conflicts = append(conflicts, FieldConflict{Field: source.Field, Current: current, Proposed: proposed})
 		}
 	}
+	planChange, err := t.absorbPlan(correction.Transaction, merged)
+	if err != nil {
+		return nil, err
+	}
+	if planChange != nil {
+		changes = append(changes, *planChange)
+		record.Changed = append(record.Changed, fieldPlan)
+	}
 	categoryChange, categoryConflict, err := t.absorbCategory(correction.Transaction, merged, reason)
 	if err != nil {
 		return nil, err
@@ -356,7 +365,67 @@ func mergeGapPatch(survivor, merged Transaction) Patch {
 	if survivor.Installments == nil && merged.Installments != nil && merged.Amount.Currency == survivor.Amount.Currency {
 		patch.Installments = Value(*merged.Installments)
 	}
+	if survivor.AmountBasis == AmountInstallment && merged.AmountBasis == AmountTotal && merged.Installments != nil && merged.Amount.Currency == survivor.Amount.Currency {
+		total := merged.Amount
+		patch.Amount = &total
+	}
 	return patch
+}
+
+func (t *tx) absorbPlan(survivor, merged Transaction) (*fieldChange, error) {
+	theirs, err := t.planRow(merged.ID)
+	if err != nil || theirs == nil {
+		return nil, err
+	}
+	mine, err := t.planRow(survivor.ID)
+	if err != nil {
+		return nil, err
+	}
+	if mine == nil {
+		params := planUpdate(*theirs)
+		params.TransactionID = survivor.ID
+		if _, err := t.q.UpdateInstallmentPlan(t.ctx, params); err != nil {
+			return nil, fmt.Errorf("move installment plan: %w", err)
+		}
+		return &fieldChange{
+			Field:  fieldPlan,
+			Before: jsonValue(map[string]any{"plan_id": theirs.ID, "transaction_id": merged.ID}),
+			After:  jsonValue(map[string]any{"plan_id": theirs.ID, "transaction_id": survivor.ID}),
+		}, nil
+	}
+	if mine.InstallmentCount != theirs.InstallmentCount {
+		return nil, &ValidationError{Field: "other_transaction_id", Message: fmt.Sprintf("is in %d installments and the transaction in %d; correct the count before merging", theirs.InstallmentCount, mine.InstallmentCount)}
+	}
+	if err := t.assertNoCharges(theirs.ID, "other_transaction_id", "has installments charged by a statement too; two charged plans are two purchases"); err != nil {
+		return nil, err
+	}
+	params := planUpdate(*mine)
+	if params.TotalMinor == nil {
+		params.TotalMinor = theirs.TotalMinor
+	}
+	if !params.InstallmentAmountKnown && theirs.InstallmentAmountKnown {
+		params.InstallmentAmountMinor, params.InstallmentAmountKnown = theirs.InstallmentAmountMinor, true
+	}
+	updated, err := t.q.UpdateInstallmentPlan(t.ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("update installment plan: %w", err)
+	}
+	if err := t.cancelPlan(*theirs); err != nil {
+		return nil, err
+	}
+	before := planSnapshot(*mine)
+	before["canceled"] = theirs.ID
+	return &fieldChange{Field: fieldPlan, Before: jsonValue(before), After: jsonValue(planSnapshot(updated))}, nil
+}
+
+func planSnapshot(row tenantdb.InstallmentPlan) map[string]any {
+	return map[string]any{
+		"plan_id":                  row.ID,
+		"transaction_id":           row.TransactionID,
+		"total_minor":              row.TotalMinor,
+		"installment_amount_minor": row.InstallmentAmountMinor,
+		"installment_amount_known": row.InstallmentAmountKnown,
+	}
 }
 
 func (t *tx) absorbCategory(survivor, merged Transaction, reason string) (*fieldChange, *FieldConflict, error) {

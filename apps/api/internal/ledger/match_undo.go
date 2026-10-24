@@ -13,6 +13,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
 	"github.com/rudolfoborges/lastro/apps/api/internal/money"
+	"github.com/rudolfoborges/lastro/apps/api/internal/store"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store/tenantdb"
 )
 
@@ -234,6 +235,11 @@ func (t *tx) recreate(observationID uuid.UUID, actor Actor) (Transaction, error)
 	if err != nil {
 		return Transaction{}, err
 	}
+	if rebuilt.AmountBasis == AmountInstallment {
+		if err := t.replanLine(created, observationID, row.Payload); err != nil {
+			return Transaction{}, err
+		}
+	}
 	if category != nil {
 		if _, err := t.categorize(created, *category, AllocationSuggested, reasonClassified, Actor{Author: decisionAuthor(actor), Ref: actor.Ref}); err != nil {
 			return Transaction{}, err
@@ -242,26 +248,30 @@ func (t *tx) recreate(observationID uuid.UUID, actor Actor) (Transaction, error)
 	return created, nil
 }
 
+type storedLine struct {
+	Kind                StatementItemKind `json:"kind"`
+	OriginalDescription string            `json:"original_description"`
+	Description         string            `json:"description"`
+	Merchant            *string           `json:"merchant"`
+	Amount              string            `json:"amount"`
+	Currency            string            `json:"currency"`
+	OriginalAmount      string            `json:"original_amount"`
+	OriginalCurrency    string            `json:"original_currency"`
+	Date                string            `json:"date"`
+	CardLast4           string            `json:"card_last4"`
+	InstallmentNumber   int               `json:"installment_number"`
+	InstallmentCount    int               `json:"installment_count"`
+	Category            *string           `json:"category"`
+	Purpose             *string           `json:"purpose"`
+}
+
 func statementLineTransaction(payload []byte) (NewTransaction, *string, error) {
-	var line struct {
-		Kind                StatementItemKind `json:"kind"`
-		OriginalDescription string            `json:"original_description"`
-		Description         string            `json:"description"`
-		Merchant            *string           `json:"merchant"`
-		Amount              string            `json:"amount"`
-		Currency            string            `json:"currency"`
-		OriginalAmount      string            `json:"original_amount"`
-		OriginalCurrency    string            `json:"original_currency"`
-		Date                string            `json:"date"`
-		CardLast4           string            `json:"card_last4"`
-		Category            *string           `json:"category"`
-		Purpose             *string           `json:"purpose"`
-	}
+	var line storedLine
 	if err := json.Unmarshal(payload, &line); err != nil {
 		return NewTransaction{}, nil, fmt.Errorf("decode statement line: %w", err)
 	}
 	nature, ok := itemNatures[line.Kind]
-	if !ok || line.Kind.installment() {
+	if !ok || (line.Kind.installment() && line.InstallmentCount < minInstallments) {
 		return NewTransaction{}, nil, errNoPurchase
 	}
 	amount, err := money.Parse(line.Amount, line.Currency)
@@ -283,6 +293,10 @@ func statementLineTransaction(payload []byte) (NewTransaction, *string, error) {
 		Status:              StatusConfirmed,
 		Purpose:             line.Purpose,
 	}
+	if line.Kind.installment() {
+		rebuilt.AmountBasis = AmountInstallment
+		rebuilt.Installments = &Installments{Count: line.InstallmentCount, Amount: &amount}
+	}
 	if line.OriginalAmount != "" {
 		original, err := money.Parse(line.OriginalAmount, line.OriginalCurrency)
 		if err != nil {
@@ -298,6 +312,41 @@ func statementLineTransaction(payload []byte) (NewTransaction, *string, error) {
 		rebuilt.Occurred = calendar.OnDay(day, calendar.SourceDocument)
 	}
 	return rebuilt, line.Category, nil
+}
+
+func (t *tx) replanLine(transaction Transaction, observationID uuid.UUID, payload []byte) error {
+	var line storedLine
+	if err := json.Unmarshal(payload, &line); err != nil {
+		return fmt.Errorf("decode statement line: %w", err)
+	}
+	charged, err := t.q.InstallmentByObservation(t.ctx, tenantdb.InstallmentByObservationParams{AccountID: t.accountID, ObservationID: &observationID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("charged installment: %w", err)
+	}
+	modality := ModalityCardInstallment
+	if line.Kind == ItemPixInstallment {
+		modality = ModalityPixInstallment
+	}
+	key := chainKey(StatementItem{OriginalDescription: line.OriginalDescription, Installment: &InstallmentPosition{Number: line.InstallmentNumber, Count: line.InstallmentCount}})
+	plan, err := t.q.InsertInstallmentPlan(t.ctx, tenantdb.InsertInstallmentPlanParams{
+		ID:                     store.NewID(),
+		AccountID:              t.accountID,
+		TransactionID:          transaction.ID,
+		PaymentModality:        string(modality),
+		InstallmentCount:       int32(line.InstallmentCount), //nolint:gosec // bounded by validation
+		Currency:               transaction.Amount.Currency,
+		InstallmentAmountMinor: &charged.AmountMinor,
+		CardLast4:              &line.CardLast4,
+		ChainKey:               &key,
+		InformedOn:             charged.InformedOn,
+	})
+	if err != nil {
+		return fmt.Errorf("insert installment plan: %w", err)
+	}
+	return t.q.MoveInstallmentByObservation(t.ctx, tenantdb.MoveInstallmentByObservationParams{AccountID: t.accountID, ObservationID: &observationID, ToPlanID: plan.ID})
 }
 
 func (t *tx) interpretedTransaction(observation tenantdb.Observation) (NewTransaction, *string, error) {
@@ -394,6 +443,12 @@ func (t *tx) revertChanges(transactionID uuid.UUID, changes []fieldChange, reaso
 			}
 			continue
 		}
+		if field == fieldPlan {
+			if err := t.revertPlan(before, after); err != nil {
+				return err
+			}
+			continue
+		}
 		if locked[Field(field)] || !sameJSON(fieldValue(current, Field(field)), after) {
 			continue
 		}
@@ -417,6 +472,51 @@ func (t *tx) revertCategory(transaction Transaction, before, after json.RawMessa
 		return nil
 	}
 	return t.restoreCategory(transaction, decodeAllocation(before), reason)
+}
+
+func (t *tx) revertPlan(before, after json.RawMessage) error {
+	var was, now struct {
+		PlanID                 uuid.UUID  `json:"plan_id"`
+		TransactionID          uuid.UUID  `json:"transaction_id"`
+		TotalMinor             *int64     `json:"total_minor"`
+		InstallmentAmountMinor *int64     `json:"installment_amount_minor"`
+		InstallmentAmountKnown bool       `json:"installment_amount_known"`
+		Canceled               *uuid.UUID `json:"canceled"`
+	}
+	if err := json.Unmarshal(before, &was); err != nil {
+		return fmt.Errorf("decode plan before the merge: %w", err)
+	}
+	if err := json.Unmarshal(after, &now); err != nil {
+		return fmt.Errorf("decode plan after the merge: %w", err)
+	}
+	current, err := t.q.GetInstallmentPlan(t.ctx, tenantdb.GetInstallmentPlanParams{AccountID: t.accountID, ID: was.PlanID})
+	if err != nil {
+		return fmt.Errorf("installment plan: %w", err)
+	}
+	params := planUpdate(current)
+	params.TransactionID = was.TransactionID
+	if was.Canceled != nil && sameJSON(jsonValue(planSnapshot(current)), after) {
+		params.TotalMinor, params.InstallmentAmountMinor, params.InstallmentAmountKnown = was.TotalMinor, was.InstallmentAmountMinor, was.InstallmentAmountKnown
+	}
+	if current.TransactionID != now.TransactionID {
+		return nil
+	}
+	if _, err := t.q.UpdateInstallmentPlan(t.ctx, params); err != nil {
+		return fmt.Errorf("restore installment plan: %w", err)
+	}
+	if was.Canceled == nil {
+		return nil
+	}
+	canceled, err := t.q.GetInstallmentPlan(t.ctx, tenantdb.GetInstallmentPlanParams{AccountID: t.accountID, ID: *was.Canceled})
+	if err != nil {
+		return fmt.Errorf("canceled installment plan: %w", err)
+	}
+	restored := planUpdate(canceled)
+	restored.CanceledAt = nil
+	if _, err := t.q.UpdateInstallmentPlan(t.ctx, restored); err != nil {
+		return fmt.Errorf("restore canceled installment plan: %w", err)
+	}
+	return nil
 }
 
 func decodeAllocation(raw json.RawMessage) *Allocation {
@@ -467,7 +567,11 @@ func patchField(patch *Patch, field Field, raw json.RawMessage) error {
 		if err = json.Unmarshal(raw, &amount); err == nil {
 			var parsed money.Money
 			if parsed, err = money.Parse(amount.Amount, amount.Currency); err == nil {
-				patch.Amount = &parsed
+				basis := AmountTotal
+				if amount.Basis == AmountInstallment {
+					basis = AmountInstallment
+				}
+				patch.Amount, patch.AmountBasis = &parsed, &basis
 			}
 		}
 	case FieldOccurred:
@@ -519,8 +623,9 @@ func patchField(patch *Patch, field Field, raw json.RawMessage) error {
 }
 
 type moneyJSON struct {
-	Amount   string `json:"amount"`
-	Currency string `json:"currency"`
+	Amount   string      `json:"amount"`
+	Currency string      `json:"currency"`
+	Basis    AmountBasis `json:"basis,omitempty"`
 }
 
 func decodeOccurrence(raw json.RawMessage) (calendar.Occurrence, error) {
@@ -552,7 +657,7 @@ func decodeOccurrence(raw json.RawMessage) (calendar.Occurrence, error) {
 }
 
 func emptyPatch(p Patch) bool {
-	return p.Description == nil && !p.Merchant.Set && !p.Payee.Set && p.Amount == nil && p.Occurred == nil &&
+	return p.Description == nil && !p.Merchant.Set && !p.Payee.Set && p.Amount == nil && p.AmountBasis == nil && p.Occurred == nil &&
 		!p.PaymentMethod.Set && p.Nature == nil && !p.Purpose.Set && !p.Installments.Set
 }
 

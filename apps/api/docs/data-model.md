@@ -26,6 +26,9 @@ erDiagram
     statement_versions ||--o{ statement_lines : lists
     observations ||--o{ statement_lines : "is printed as"
     transactions ||--o{ revisions : "changes are recorded in"
+    transactions ||--o| installment_plans : "is paid by"
+    installment_plans ||--o{ installments : "charges"
+    statements ||--o{ installments : "charges or announces"
     transactions ||--o{ transaction_merges : "survives or is merged in"
     transactions ||--o{ match_rejections : "is not the same purchase as"
     accounts ||--o{ idempotency_keys : "dedupes submissions with"
@@ -167,6 +170,28 @@ erDiagram
         int page
         text excerpt "as printed, redacted"
     }
+    installment_plans {
+        uuid id PK
+        uuid transaction_id FK
+        text payment_modality "card_installment, pix_installment"
+        int installment_count
+        bigint installment_amount_minor
+        bool installment_amount_known "stated, not only seen charged"
+        bigint total_minor "only when informed"
+        text chain_key "normalized printed description"
+        date informed_on
+        timestamptz canceled_at
+    }
+    installments {
+        uuid id PK
+        uuid plan_id FK
+        int number
+        bigint amount_minor
+        text state "charged, known_future"
+        uuid statement_id FK
+        uuid observation_id FK "the statement line, when charged"
+        date informed_on
+    }
     transaction_merges {
         uuid id PK
         uuid survivor_id FK
@@ -201,6 +226,7 @@ Outside the diagram: `tool_calls` and `api_requests` audit every MCP tool call a
 - **Amounts are positive magnitudes.** The `nature` gives the direction: `credit` and `refund` bring money back; the others take it out. Foreign purchases keep the original amount and currency next to the charged one; the two never share a currency.
 - **Dates keep their precision.** `occurred_at` exists only for `exact`; `occurred_on` is null only for `unknown`; `month` dates sit on the first day of the month.
 - **Merges keep both sides.** `status = 'merged'` exactly when `merged_into_id` is set, so the merged transaction and its evidence remain queryable and the merge can be undone. `transaction_merges` records what each merge moved and changed; a transaction is merged at most once at a time (`transaction_merges_active_idx`).
+- **Totals are never invented.** `transactions.amount_basis` is `installment` when only the installment amount of a purchase is known; `installment_plans.total_minor` exists only when informed. Estimated installments are computed and never stored: `installments` holds what statements charged or printed.
 - **Rejected pairs stay rejected.** `match_rejections` holds each pair once, ordered (`low_id < high_id`); candidates never include a rejected pair.
 - **One category per transaction.** A transaction has at most one current row in `category_allocations` (`category_allocations_one_current_idx`), and deferred constraint triggers refuse, at commit, a category whose amount differs from the transaction's. Older rows are superseded, never deleted.
 - **Statements are read, not edited.** `statement_versions` and `statement_lines` have no `UPDATE`; a statement is identified by `(issuer_key, card_last4, closing_date)` and every line has a page and an excerpt. A clarification points to a transaction, an observation or a statement (at least one).

@@ -133,6 +133,31 @@
             "description": "the text of the line exactly as printed, so Rudolfo can find it in his PDF",
             "type": "string"
           },
+          "future_installments": {
+            "description": "only when the statement prints the next installments of this same purchase; never project them yourself",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "description": "amount printed for it, canonical decimal in the statement currency",
+                  "type": "string"
+                },
+                "number": {
+                  "description": "installment number, after the one charged on this line",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "number",
+                "amount"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "installment_count": {
             "description": "N of n/N",
             "type": "integer"

@@ -98,6 +98,13 @@ func (k PaymentKind) IsCard() bool {
 	return k == PaymentCreditCard || k == PaymentDebitCard
 }
 
+type AmountBasis string
+
+const (
+	AmountTotal       AmountBasis = "total"
+	AmountInstallment AmountBasis = "installment"
+)
+
 type EvidenceStatus string
 
 const (
@@ -187,6 +194,7 @@ type Transaction struct {
 	Merchant            *string
 	Payee               *string
 	Amount              money.Money
+	AmountBasis         AmountBasis
 	OriginalAmount      *money.Money
 	Occurred            calendar.Occurrence
 	PaymentMethod       *PaymentMethod
@@ -206,6 +214,7 @@ type NewTransaction struct {
 	Merchant            *string
 	Payee               *string
 	Amount              money.Money
+	AmountBasis         AmountBasis
 	OriginalAmount      *money.Money
 	Occurred            calendar.Occurrence
 	PaymentMethod       *PaymentMethodRef

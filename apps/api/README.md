@@ -213,7 +213,7 @@ Each transaction has **one category**, stored in `category_allocations` as a sin
 | `linked` | `completed` | The conversation became evidence of an existing transaction and filled only what was missing (merchant, purpose, card, date, installments, a category Rudolfo said); nothing new was created |
 | `needs_clarification` | `pending` | Nothing written: the amount or what was bought is missing; `question` says what to ask |
 
-Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments are kept as informed; the installment plan comes later.
+Partial records are accepted: without a payment method the transaction stays `provisional`; without a category it counts as "Não identificado" and opens a question. `date_reference` (`now`, `today`, `yesterday`) is resolved from `message_at` (or the moment of the call) in the account time zone and marked inferred. Installments create an installment plan (see [Installment plans](#installment-plans)).
 
 ### Clarifications
 
@@ -282,7 +282,7 @@ Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statem
   - **Reading doubts:** doubts of the earlier reading that the new one no longer has are resolved.
 - **All or nothing:** the reading is validated and written in one transaction. Every item needs `page` and `excerpt`, amounts are positive in the statement currency (the kind gives the direction; `adjustment` and `unknown` carry `direction`), `n/N` is coherent and the included components (principal, interest, IOF, fee) add up to the item. Errors point to the field, such as `items[3].page`.
 - **Lines:** each item becomes an observation `statement_line` whose `source_key` is the statement plus a hash of its normalized description, amount, card, date and `n/N`, plus the ordinal of identical lines, so two legitimate identical lines stay two observations. `statement_lines` keeps, per version, the kind, direction, amount, page and excerpt.
-- **Effects:** `purchase`, `interest`, `fee`, `tax`, `credit`, `refund`, `payment` and `adjustment` create a `confirmed` transaction on the line's credit card (natures `expense`, `charge`, `credit`, `refund`, `payment`, `adjustment`). `installment` and `pix_installment` stay only in the statement until installment plans exist (#40). `unknown` opens a `reading_doubt` on the line. Reading doubts open `reading_doubt` clarifications on the statement.
+- **Effects:** `purchase`, `interest`, `fee`, `tax`, `credit`, `refund`, `payment` and `adjustment` create a `confirmed` transaction on the line's credit card (natures `expense`, `charge`, `credit`, `refund`, `payment`, `adjustment`). `installment` and `pix_installment` charge one installment of a purchase's plan (see [Installment plans](#installment-plans)). `unknown` opens a `reading_doubt` on the line. Reading doubts open `reading_doubt` clarifications on the statement.
 - **Review (#36):**
   - **Composition:** previous balance, purchases, installments, charges (interest, fees, taxes), payments, credits (credits and refunds), and the net of adjustments and unknown lines.
   - **Computed total:** previous balance plus debits minus credits, always computed by the server from the stored lines. The difference with the printed total is shown in cents and never turned into an adjustment.
@@ -292,6 +292,26 @@ Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statem
   - **Dry run:** with `dry_run: true` the reading runs inside a transaction that is rolled back, and the answer is `previewed` with the same review.
 - **Lines already recorded elsewhere:** a `purchase` or `refund` without `related_transaction_id` is checked against open transactions of the same nature with the same amount (or the same original amount for international lines), within five days of the line date and not yet charged by a statement line, paid by credit card or with no payment method. If any item has candidates, nothing is written and the answer is `possible_match`, with the candidates per item. Case resends the whole reading deciding each item: `related_transaction_id` links the line, fills what is missing (card, merchant, date, installments, the amount when it differs in the same currency) and confirms the transaction; `confirm_distinct` creates a new one. A transaction already charged by a statement line cannot be linked to another line, except installments.
 
+### Installment plans
+
+A purchase in installments has one row in `installment_plans` (#40): modality (`card_installment` or `pix_installment`), count, the installment amount and whether it was stated (`installment_amount_known`), the contracted total only when informed, the card, the chain key and the date of the information. `installments` keeps the installments charged by a statement line and the future ones a statement printed (`known_future`); the others are computed, never stored.
+
+- **From the conversation:** "12x de 100", total R$ 1.200,00, creates the plan with the total and 12 known installments.
+- **From a statement line `n/N`,** in this order:
+  - with `related_transaction_id`, the line confirms that purchase and charges installment n of its plan, created from the line if it had none;
+  - **chained by Lastro** when exactly one open plan has the same card, the same printed description (normalized, with the `n/N` token removed), the same N and installment n−1 charged with the same amount;
+  - otherwise the line is matched like any other: several chainable plans, or open card purchases with the same count or a total within N cents of N × the installment and a close date, answer `possible_match`;
+  - without candidates, the line creates the purchase with `amount_basis = 'installment'`: the transaction amount is the installment amount, because the total was never informed and is never multiplied out. Its plan estimates the next installments from the one charged.
+- **Totals of a plan:**
+  - **Charged:** the sum of the charged installments.
+  - **Remaining known:** future installments printed by a statement, or stated by Rudolfo.
+  - **Remaining estimated:** the installment amount seen on the statement, or the total split evenly with the remainder on the first installment.
+  - **Not projected:** installments charged before Lastro saw the plan.
+- **Corrections:** Rudolfo's amount on an `installment`-basis purchase becomes its total (`amount_basis` back to `total`) and the plan's total. Changing the count is refused below the last charged installment, and clearing it is refused once a statement charged one.
+- **Merges** carry the plan to the survivor, or fill the survivor's plan (total, known installment amount; the same count is required) and cancel the merged one; `undo_match` restores both.
+- **Earlier statements:** installment lines recorded before plans existed get their purchase and plan when the same reading is sent again (`already_recorded`), or when a new version keeps them.
+- `get_transaction` returns the plan with each installment (`charged`, `known_future`, `estimated`), the charged amount and the remaining commitment.
+
 ### Matching sources
 
 The same purchase may arrive from the conversation, from Google Wallet and from a statement. **Lastro never links them by itself** (`ledger/matching.go`): it offers explainable candidates and Case decides, asking Rudolfo when in doubt.
@@ -299,6 +319,7 @@ The same purchase may arrive from the conversation, from Google Wallet and from 
 - **Candidates** are open transactions of the same nature with the same amount and currency, or the same original amount for international purchases (no exchange tolerance and no conversion), a compatible payment method (both cards, or the same kind, or unknown) and a close date. The window is two days for the conversation and notifications, five days for statement lines and for `find_match_candidates`; a month-precision date uses its month, and an unknown date uses the day the record was created. Transactions that already have evidence from the source being matched are never candidates.
 - **Explanation:** every candidate carries its `sources` and, in pt-BR, `reasons` (same amount, same date, same card or payment method, same merchant) and `differences` (another name, days apart, another card, missing payment method). Merchant names are compared only after case, accents and punctuation are folded; acquirer prefixes and aliases are Case's call.
 - **Where:** `record_expense`, `submit_notification_interpretations` and `submit_statement_extraction` answer `possible_match` and write nothing until Case decides with `related_transaction_id` or `confirm_distinct`. `find_match_candidates` searches on demand from a transaction or from an observation that is evidence of one.
+- **Installment lines** are matched against installment plans first (see [Installment plans](#installment-plans)).
 - **Invariants:** a transaction has at most one confirmed observation per source: one conversation report, one Google Wallet notification (its versions are the same notification) and one statement line, except installment lines, which charge the same purchase once per cycle. Linking anything else is refused. The amount never adds up evidence.
 - **Deferring (#39):** with `defer_match`, an item that has candidates is recorded on its own transaction with status `pending_clarification` and a `possible_match` clarification whose context lists the candidates (`candidate_ids`). The status returns to the payment-method rule when the question is settled: a merge resolves it, and rejecting every candidate (or dismissing the question) closes it. Resolving it with `resolve_clarification` is refused: the answer to "same purchase" is `confirm_match`.
 - **Merging (`confirm_match`):**

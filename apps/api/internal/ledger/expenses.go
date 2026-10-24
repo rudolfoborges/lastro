@@ -204,7 +204,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 	}
 
 	if report.RelatedTransactionID != nil {
-		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, actor)
+		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, loc, actor)
 	}
 	description := report.Description
 	if description == "" {
@@ -226,6 +226,9 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		return recordedExpense{}, err
 	}
 	if err := t.categorizeReport(created, report, actor, false); err != nil {
+		return recordedExpense{}, err
+	}
+	if err := t.syncPlan(created, calendar.DateOf(report.messageAt(), loc), report.Installments != nil && report.Installments.Amount != nil); err != nil {
 		return recordedExpense{}, err
 	}
 	if err := t.settleCandidates(created, candidates, report.DeferMatch, actor); err != nil {
@@ -286,7 +289,7 @@ func conversationProbe(report ExpenseReport, occurred calendar.Occurrence, loc *
 	return probe
 }
 
-func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseReport, occurred calendar.Occurrence, actor Actor) (recordedExpense, error) {
+func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseReport, occurred calendar.Occurrence, loc *time.Location, actor Actor) (recordedExpense, error) {
 	current, err := t.lockOpenTransaction(transactionID)
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -309,6 +312,11 @@ func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseRe
 	correction, err := t.correct(transactionID, conversationGapPatch(current, report, occurred), reasonConversationLink, actor)
 	if err != nil {
 		return recordedExpense{}, err
+	}
+	if slices.Contains(correction.Changed, FieldInstallments) {
+		if err := t.syncPlan(correction.Transaction, calendar.DateOf(report.messageAt(), loc), report.Installments.Amount != nil); err != nil {
+			return recordedExpense{}, err
+		}
 	}
 	if err := t.categorizeReport(correction.Transaction, report, actor, true); err != nil {
 		return recordedExpense{}, err

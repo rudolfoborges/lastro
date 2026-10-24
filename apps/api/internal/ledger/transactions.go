@@ -29,6 +29,7 @@ type TransactionDetail struct {
 	Fields         []FieldSource
 	History        []Revision
 	Clarifications []Clarification
+	Plan           *InstallmentPlan
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, accountID, observationID uuid.UUID, in NewTransaction, actor Actor) (Transaction, error) {
@@ -87,6 +88,7 @@ func (t *tx) createTransaction(observationID uuid.UUID, in NewTransaction, actor
 		Status:              string(in.Status),
 		Purpose:             in.Purpose,
 		RefundOfID:          in.RefundOfID,
+		AmountBasis:         string(in.AmountBasis),
 	}
 	if method != nil {
 		params.PaymentMethodID = &method.ID
@@ -156,6 +158,10 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 		clarification.Transaction = nil
 		clarifications = append(clarifications, clarification)
 	}
+	plan, err := t.installmentPlan(id)
+	if err != nil {
+		return TransactionDetail{}, err
+	}
 	return TransactionDetail{
 		Transaction:    transaction,
 		Category:       EffectiveCategory(transaction, category),
@@ -163,6 +169,7 @@ func (t *tx) transactionDetail(id uuid.UUID) (TransactionDetail, error) {
 		Fields:         fields,
 		History:        history,
 		Clarifications: clarifications,
+		Plan:           plan,
 	}, nil
 }
 
@@ -266,6 +273,15 @@ func normalizeNewTransaction(in NewTransaction) (NewTransaction, error) {
 		if err := validatePaymentMethod(*in.PaymentMethod); err != nil {
 			return in, err
 		}
+	}
+	if in.AmountBasis == "" {
+		in.AmountBasis = AmountTotal
+	}
+	if in.AmountBasis != AmountTotal && in.AmountBasis != AmountInstallment {
+		return in, &ValidationError{Field: "amount_basis", Message: "must be total or installment"}
+	}
+	if in.AmountBasis == AmountInstallment && in.Installments == nil {
+		return in, &ValidationError{Field: "amount_basis", Message: "installment applies only to a purchase in installments"}
 	}
 	if !slices.Contains(natures, in.Nature) {
 		return in, &ValidationError{Field: "nature", Message: fmt.Sprintf("must be one of %v", natures)}
@@ -371,6 +387,7 @@ func toTransaction(row tenantdb.Transaction, method *PaymentMethod) Transaction 
 		Merchant:            row.Merchant,
 		Payee:               row.Payee,
 		Amount:              money.Money{Minor: row.AmountMinor, Currency: row.Currency},
+		AmountBasis:         AmountBasis(row.AmountBasis),
 		Occurred:            toOccurrence(row.OccurredAt, row.OccurredOn, row.DatePrecision, row.DateSource),
 		PaymentMethod:       method,
 		Nature:              Nature(row.Nature),
