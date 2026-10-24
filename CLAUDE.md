@@ -45,6 +45,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | conferência da fatura (conferida) | `statement_review` (`reconciled`) |
 | correspondência entre fontes | `match` |
 | candidato a correspondência: motivos e diferenças / compra não encontrada na fatura | `match_candidate`: `reasons` / `differences` / `unmatched` |
+| confirmar, rejeitar, desfazer correspondência / decidir depois / par rejeitado | `confirm_match`, `reject_match`, `undo_match` / `defer_match` / `match_rejection` |
 | parcelamento / parcela | `installment_plan` / `installment` |
 | compromissos futuros | `future_commitments` |
 | principal, juros, IOF, tarifa | `principal`, `interest`, `iof`, `fee` |

@@ -29,7 +29,8 @@ Every write returns `outcome` (`completed`, `pending` or `failed`), a `result` a
 - `possible_duplicate`: nothing was recorded. The same amount and text arrived recently in this conversation. Ask Rudolfo whether it is the same purchase. If it is a second real purchase, call again with the **same** `request_id` and `confirm_distinct: true`.
 - `possible_match`: nothing was recorded. Google Wallet or a statement already recorded a purchase with the same amount and a close date; `candidates` explains each one with `reasons` and `differences` (see `get_instructions` topic `matching`). Call again with the **same** `request_id` and:
   - `related_transaction_id` when it is the same purchase: the message becomes its evidence and fills what was missing (merchant, purpose, card, date, category). Answer `linked`; nothing new is created;
-  - `confirm_distinct: true` when it is another purchase.
+  - `confirm_distinct: true` when it is another purchase;
+  - `defer_match: true` only when you cannot ask Rudolfo now: it is recorded apart, pending clarification, with a question.
   Ask Rudolfo when the candidates do not settle it.
 - `needs_clarification`: nothing was recorded. Ask the suggested question, then call again with the same `request_id` and the answer.
 - A tool error (`outcome: "failed"`) means **nothing was recorded**. Tell Rudolfo, fix what the `message` says, and call again. For `internal_error`, retry with the same request.
@@ -42,6 +43,7 @@ Never tell Rudolfo that something was recorded unless the answer says `recorded`
 - Set or confirm the category with `set_category`; each transaction has a single category.
 - Void a record made by mistake with `void_transaction`; it is kept as voided, never deleted.
 - Pending questions are in `list_clarifications`; answer them with `resolve_clarification`.
+- "Essa compra está duplicada" or "não era a mesma compra": `confirm_match`, `reject_match` or `undo_match` (see `get_instructions` topic `matching`).
 
 ## Totals
 

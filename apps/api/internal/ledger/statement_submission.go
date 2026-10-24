@@ -249,6 +249,12 @@ func (s *statementSubmitter) linePayload(statement tenantdb.Statement, item Stat
 	if item.Date != nil {
 		payload["date"] = item.Date.String()
 	}
+	if item.Category != nil {
+		payload["category"] = *item.Category
+	}
+	if item.Purpose != nil {
+		payload["purpose"] = *item.Purpose
+	}
 	if item.Installment != nil {
 		payload["installment_number"], payload["installment_count"] = item.Installment.Number, item.Installment.Count
 	}
@@ -283,6 +289,13 @@ func (s *statementSubmitter) apply(statement tenantdb.Statement, observationID u
 }
 
 func (s *statementSubmitter) create(observationID uuid.UUID, item StatementItem) (StatementLine, error) {
+	var candidates []MatchCandidate
+	if item.ConfirmDistinct || item.DeferMatch {
+		var err error
+		if candidates, err = s.itemCandidates(item, map[uuid.UUID]bool{}); err != nil {
+			return StatementLine{}, err
+		}
+	}
 	description := item.Description
 	if description == "" {
 		description = item.OriginalDescription
@@ -326,6 +339,9 @@ func (s *statementSubmitter) create(observationID uuid.UUID, item StatementItem)
 		if _, err := s.t.categorize(created, *category, AllocationSuggested, reasonClassified, s.actor); err != nil {
 			return StatementLine{}, err
 		}
+	}
+	if err := s.t.settleCandidates(created, candidates, item.DeferMatch, s.actor); err != nil {
+		return StatementLine{}, err
 	}
 	if err := s.t.refreshClarifications(created.ID); err != nil {
 		return StatementLine{}, err
@@ -444,7 +460,7 @@ func (s *statementSubmitter) candidates(eligible func(index int) bool) ([]ItemCa
 	}
 	var out []ItemCandidates
 	for i, item := range s.in.Items {
-		if (item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct || !eligible(i) {
+		if (item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct || item.DeferMatch || !eligible(i) {
 			continue
 		}
 		found, err := s.itemCandidates(item, linked)

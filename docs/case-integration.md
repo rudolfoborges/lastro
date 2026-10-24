@@ -214,3 +214,6 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] A purchase Google Wallet already recorded, told afterwards in the conversation ("paguei 32,97 na padaria, foi o café da equipe"), comes back as `possible_match` with reasons and differences. Case links it (`linked`), the purpose is filled and there is still one transaction.
 - [ ] "Essa compra apareceu duas vezes?" makes Case call `find_match_candidates` and explain the candidates with their differences.
 - [ ] "O que falta conferir nesta fatura?" lists the card purchases of the cycle that the statement did not confirm, without calling them cancelled or undue.
+- [ ] Two records of the same purchase (for example "gastei uns 33 na padaria" and the Wallet notification of R$ 32,97) become one with "é a mesma compra" (`confirm_match`); `list_transactions` no longer counts the merged one.
+- [ ] "Não era a mesma compra" right after makes Case call `undo_match`, and both records come back as they were.
+- [ ] While processing the inbox without Rudolfo, a doubtful notification is recorded pending (`defer_match`) and shows up in "quais dúvidas eu tenho?"; answering it settles the status.

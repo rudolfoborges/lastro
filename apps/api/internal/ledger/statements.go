@@ -141,6 +141,7 @@ type StatementItem struct {
 	RelatedTransactionID *uuid.UUID
 	RefundOfID           *uuid.UUID
 	ConfirmDistinct      bool
+	DeferMatch           bool
 	Question             string
 }
 
@@ -491,6 +492,8 @@ func validateItemDecisions(item *StatementItem) error {
 		return &ValidationError{Field: "confirm_distinct", Message: "cannot be sent with related_transaction_id"}
 	case item.ConfirmDistinct && item.Kind != ItemPurchase && item.Kind != ItemRefund:
 		return &ValidationError{Field: "confirm_distinct", Message: "applies only to purchase and refund"}
+	case item.DeferMatch && ((item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct):
+		return &ValidationError{Field: "defer_match", Message: "applies only to a purchase or refund you cannot match yet, without related_transaction_id or confirm_distinct"}
 	case item.RefundOfID != nil && item.Kind != ItemRefund:
 		return &ValidationError{Field: "refund_of_id", Message: "applies only to refund"}
 	case item.RefundOfID != nil && item.RelatedTransactionID != nil:

@@ -72,7 +72,7 @@ Rudolfo's credit card purchases told in the conversation or seen in Google Walle
 
 - same purchase: `related_transaction_id`. Lastro links the line, confirms the transaction, fills the card and the missing fields, and keeps what Rudolfo confirmed;
 - a different purchase: `confirm_distinct: true`;
-- not sure: ask Rudolfo. Two purchases of the same amount on the same day can both be real.
+- not sure: ask Rudolfo. Two purchases of the same amount on the same day can both be real. When you cannot ask now, send `defer_match: true` on the item: the reading is recorded, the line gets its own transaction pending clarification and a `possible_match` question waits for Rudolfo.
 
 You may also link any line (installments and charges too) to a transaction you already know is the same, with `related_transaction_id`.
 

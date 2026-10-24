@@ -71,6 +71,7 @@ type InterpretationInput struct {
 	Purpose              string `json:"purpose,omitempty" jsonschema:"only when Rudolfo told you why"`
 	RelatedTransactionID string `json:"related_transaction_id,omitempty" jsonschema:"transaction this notification refers to: required for purchase_update and cancellation, the refunded purchase for refund, or a conversation record that is the same purchase"`
 	ConfirmDistinct      bool   `json:"confirm_distinct,omitempty" jsonschema:"true when a possible_match candidate is a different purchase"`
+	DeferMatch           bool   `json:"defer_match,omitempty" jsonschema:"true when you cannot decide on a possible_match now: Lastro records it apart, pending clarification, and opens a possible_match question for Rudolfo"`
 	Question             string `json:"question,omitempty" jsonschema:"for unknown: what to ask Rudolfo, in Portuguese"`
 	Reinterpret          bool   `json:"reinterpret,omitempty" jsonschema:"true to replace an earlier, different reading of the same version"`
 	Reason               string `json:"reason,omitempty" jsonschema:"why the reading changed, in Portuguese; required with reinterpret"`
@@ -207,6 +208,7 @@ func notificationInterpretation(in InterpretationInput) (ledger.NotificationInte
 		Category:        optionalString(in.Category),
 		Purpose:         optionalString(in.Purpose),
 		ConfirmDistinct: in.ConfirmDistinct,
+		DeferMatch:      in.DeferMatch,
 		Question:        in.Question,
 		Reinterpret:     in.Reinterpret,
 		Reason:          in.Reason,

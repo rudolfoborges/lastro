@@ -47,6 +47,7 @@ type NotificationInterpretation struct {
 	Purpose              *string
 	RelatedTransactionID *uuid.UUID
 	ConfirmDistinct      bool
+	DeferMatch           bool
 	Question             string
 	Reinterpret          bool
 	Reason               string
@@ -217,11 +218,12 @@ func (a *interpreter) reinterpret(previous InterpretationRecord, hash []byte) (I
 }
 
 func (a *interpreter) createPurchase() (applied, error) {
-	if !a.in.ConfirmDistinct {
-		candidates, err := a.matchCandidates()
-		if err != nil || len(candidates) > 0 {
-			return applied{candidates: candidates}, err
-		}
+	candidates, err := a.matchCandidates()
+	if err != nil {
+		return applied{}, err
+	}
+	if len(candidates) > 0 && !a.in.ConfirmDistinct && !a.in.DeferMatch {
+		return applied{candidates: candidates}, nil
 	}
 	description := a.in.Description
 	if description == "" {
@@ -242,6 +244,9 @@ func (a *interpreter) createPurchase() (applied, error) {
 		return applied{}, err
 	}
 	if err := a.classify(created, false); err != nil {
+		return applied{}, err
+	}
+	if err := a.t.settleCandidates(created, candidates, a.in.DeferMatch, a.actor); err != nil {
 		return applied{}, err
 	}
 	return applied{effect: EffectCreated, transactionID: &created.ID}, a.t.refreshClarifications(created.ID)
@@ -657,7 +662,7 @@ func (a *interpreter) originalDescription() string {
 
 func (in NotificationInterpretation) submissionHash() []byte {
 	reading := in
-	reading.ConfirmDistinct, reading.Reinterpret, reading.Reason = false, false, ""
+	reading.ConfirmDistinct, reading.DeferMatch, reading.Reinterpret, reading.Reason = false, false, false, ""
 	if reading.OccurredAt != nil {
 		at := reading.OccurredAt.UTC()
 		reading.OccurredAt = &at
@@ -718,6 +723,8 @@ func validateEventFields(in NotificationInterpretation) error {
 		return &ValidationError{Field: "related_transaction_id", Message: fmt.Sprintf("is not accepted for %s, which never changes a transaction", in.EventType)}
 	case in.ConfirmDistinct && in.EventType != EventPurchase:
 		return &ValidationError{Field: "confirm_distinct", Message: "applies only to purchase"}
+	case in.DeferMatch && (in.EventType != EventPurchase || in.RelatedTransactionID != nil || in.ConfirmDistinct):
+		return &ValidationError{Field: "defer_match", Message: "applies only to a purchase you cannot match yet, without related_transaction_id or confirm_distinct"}
 	case in.Question != "" && in.EventType != EventUnknown:
 		return &ValidationError{Field: "question", Message: "applies only to unknown"}
 	}

@@ -21,6 +21,12 @@ WHERE t.account_id = @account_id
       WHERE e.account_id = t.account_id AND e.transaction_id = t.id AND e.status = 'confirmed'
         AND o.source = ANY(@excluded_sources::text[])
   )
+  AND NOT EXISTS (
+      SELECT FROM match_rejections r
+      WHERE r.account_id = t.account_id
+        AND ((r.low_id = t.id AND r.high_id = ANY(@excluded_ids::uuid[]))
+             OR (r.high_id = t.id AND r.low_id = ANY(@excluded_ids::uuid[])))
+  )
 ORDER BY t.occurred_on NULLS LAST, t.created_at, t.id
 LIMIT 5;
 

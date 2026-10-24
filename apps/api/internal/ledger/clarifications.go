@@ -215,6 +215,9 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 		if kind == ClarificationPurposeUnknown && resolution.Purpose == nil {
 			return ResolvedClarification{}, &ValidationError{Field: "purpose", Message: "is needed to resolve a missing purpose; dismiss it if Rudolfo does not know"}
 		}
+		if kind == ClarificationPossibleMatch {
+			return ResolvedClarification{}, &ValidationError{Field: "action", Message: "a possible match is answered with confirm_match when it is the same purchase, or dismissed when Rudolfo says the purchases are different"}
+		}
 	}
 
 	status := ClarificationResolved
@@ -224,6 +227,11 @@ func (t *tx) resolveClarification(id uuid.UUID, resolution Resolution, actor Act
 	closed, err := t.closeClarification(row, status, note, actor.Author)
 	if err != nil {
 		return ResolvedClarification{}, err
+	}
+	if kind == ClarificationPossibleMatch {
+		if err := t.dismissPossibleMatch(closed, note, actor); err != nil {
+			return ResolvedClarification{}, err
+		}
 	}
 
 	var result ResolvedClarification

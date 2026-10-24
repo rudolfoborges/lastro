@@ -18,6 +18,13 @@ A candidate has the same amount (or the same original amount for international p
 - **Same purchase** when the amount, the card and the date agree and the differences have an ordinary explanation: the statement posts a few days later, the acquirer prints another name ("IFD*", "PAG*", "MP*"), the conversation had no card. Send the item again with `related_transaction_id`.
 - **Different purchase** when a difference cannot be explained, such as another card or another day of a recurring purchase. Send it again with `confirm_distinct: true`.
 - **Ask Rudolfo** when two candidates are equally plausible, or when he could have made two equal purchases (same store, same amount, same day). Similarity is not proof of duplication: two purchases of R$ 32,97 at the same store on the same day can both be real.
+- **Cannot ask now** (the inbox routine, a statement with a hundred lines): send the item with `defer_match: true`. Lastro records it on its own transaction with status `pending_clarification` and opens a `possible_match` question naming the candidates. Totals keep it apart from the confirmed ones until Rudolfo answers.
+
+## Decisions after recording
+
+- `confirm_match` (`transaction_id`, `other_transaction_id`, `reason`, `request_id`): the two transactions are the same purchase. Every record moves to one of them (the one confirmed by a statement, else by a notification, else the oldest); the other is kept as `merged` and no longer counts. Missing fields are filled from the merged one, Rudolfo's confirmed values are kept, and a field he confirmed differently on each side becomes a question. Refunds of the merged one follow the kept one. Answer a `possible_match` question this way when it is the same purchase.
+- `reject_match`: they are different purchases. The pair is never offered again, and the `possible_match` questions it settles are closed. Dismissing a `possible_match` question with `resolve_clarification` does the same for its candidates; resolving it is refused, because the answer is a merge.
+- `undo_match` (`transaction_id` that holds the record now, `observation_id` of the record linked by mistake, from `get_transaction` evidence): nothing is lost. A merge brings both transactions back as they were (`unmerged`); a record linked at submission gets its own transaction again from its original data (`separated`); fields the link filled return to what they were unless Rudolfo changed them since. The record that created a transaction cannot be separated from it: undo the one linked later, or void the transaction if it was a mistake. The pair is never offered again.
 
 ## What Lastro refuses
 

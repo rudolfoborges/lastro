@@ -35,6 +35,7 @@ type RecordExpenseInput struct {
 	InstallmentAmount    string `json:"installment_amount,omitempty" jsonschema:"value of each installment as a canonical decimal"`
 	RelatedTransactionID string `json:"related_transaction_id,omitempty" jsonschema:"a possible_match candidate that is this same purchase: the conversation becomes its evidence instead of a new transaction"`
 	ConfirmDistinct      bool   `json:"confirm_distinct,omitempty" jsonschema:"true only after a possible_duplicate or possible_match turned out to be another real purchase"`
+	DeferMatch           bool   `json:"defer_match,omitempty" jsonschema:"true when you cannot decide on a possible_match now: Lastro records it apart, pending clarification, and opens a possible_match question for Rudolfo"`
 }
 
 type RecordExpenseOutput struct {
@@ -97,6 +98,7 @@ func expenseReport(c call, in RecordExpenseInput) (ledger.ExpenseReport, error) 
 		Merchant:        optionalString(in.Merchant),
 		Purpose:         optionalString(in.Purpose),
 		ConfirmDistinct: in.ConfirmDistinct,
+		DeferMatch:      in.DeferMatch,
 	}
 	var err error
 	if strings.TrimSpace(in.RelatedTransactionID) != "" {
