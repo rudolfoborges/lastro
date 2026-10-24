@@ -60,6 +60,25 @@ func TestExpensesWithoutCategoryAreListedAsClarifications(t *testing.T) {
 	}
 }
 
+func TestUnidentifiedSuggestedByCaseKeepsTheCategoryQuestionUntilRudolfoAnswers(t *testing.T) {
+	f := newFixture(t)
+	created, _ := f.transaction("message-1")
+
+	if _, err := f.categorize(created, "unidentified", ledger.AllocationSuggested, agent); err != nil {
+		t.Fatal(err)
+	}
+	if open := f.openClarifications(ledger.ClarificationCategoryUnknown); len(open) != 1 {
+		t.Fatalf("clarifications = %+v, want the category question kept open", open)
+	}
+
+	if _, err := f.categorize(created, "unidentified", ledger.AllocationConfirmed, rudolfo); err != nil {
+		t.Fatal(err)
+	}
+	if open := f.openClarifications(ledger.ClarificationCategoryUnknown); len(open) != 0 {
+		t.Errorf("clarifications = %+v, want none once Rudolfo says he cannot tell", open)
+	}
+}
+
 func TestAPixWithoutPurposeStaysOpenUntilRudolfoAnswers(t *testing.T) {
 	f := newFixture(t)
 	created := f.pix("message-1", nil)

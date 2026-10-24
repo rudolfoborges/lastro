@@ -217,7 +217,7 @@ Partial records are accepted: without a payment method the transaction stays `pr
 
 Questions for Rudolfo are rows in `clarifications` (kind, target transaction or observation, question in pt-BR, context, `open`/`resolved`/`dismissed`). The ledger opens and closes them as a side effect of every change, idempotently: the same cause never has two open questions (`dedup_key`), and a dismissed question is not asked again for the same cause.
 
-- `category_unknown`: a transaction without categories; closed when it gets one.
+- `category_unknown`: a transaction without categories, or with `unidentified` only suggested; closed when it gets a category or Rudolfo confirms `unidentified`.
 - `purpose_unknown`: a Pix without purpose; closed when the purpose is set.
 - `field_conflict`: Case, a rule or the system tried to change a field Rudolfo confirmed; the context carries the current and proposed values, and it closes when Rudolfo changes that field himself.
 - Voiding a transaction dismisses its open questions.
