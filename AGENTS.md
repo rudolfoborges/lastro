@@ -47,6 +47,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | candidato a correspondência: motivos e diferenças / compra não encontrada na fatura | `match_candidate`: `reasons` / `differences` / `unmatched` |
 | confirmar, rejeitar, desfazer correspondência / decidir depois / par rejeitado | `confirm_match`, `reject_match`, `undo_match` / `defer_match` / `match_rejection` |
 | parcelamento / parcela | `installment_plan` / `installment` |
+| parcela cobrada / futura conhecida / estimada; valor conhecido só da parcela | `installment` `state`: `charged` / `known_future` / `estimated`; `amount_basis`: `installment` / `total` |
 | compromissos futuros | `future_commitments` |
 | principal, juros, IOF, tarifa | `principal`, `interest`, `iof`, `fee` |
 | dúvida | `clarification` |

@@ -31,7 +31,7 @@ func (q *Queries) ConfirmedTransactionOfObservation(ctx context.Context, arg Con
 }
 
 const findMatchCandidates = `-- name: FindMatchCandidates :many
-SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at
+SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at, t.amount_basis
 FROM transactions t
 LEFT JOIN payment_methods pm ON pm.account_id = t.account_id AND pm.id = t.payment_method_id
 WHERE t.account_id = $1
@@ -127,6 +127,7 @@ func (q *Queries) FindMatchCandidates(ctx context.Context, arg FindMatchCandidat
 			&i.MergedIntoID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AmountBasis,
 		); err != nil {
 			return nil, err
 		}
@@ -235,7 +236,7 @@ func (q *Queries) TransactionEvidenceSources(ctx context.Context, arg Transactio
 }
 
 const unmatchedCardPurchases = `-- name: UnmatchedCardPurchases :many
-SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at
+SELECT t.id, t.account_id, t.original_description, t.description, t.merchant, t.payee, t.amount_minor, t.currency, t.original_amount_minor, t.original_currency, t.occurred_at, t.occurred_on, t.date_precision, t.date_source, t.payment_method_id, t.nature, t.status, t.purpose, t.installment_count, t.installment_amount_minor, t.refund_of_id, t.merged_into_id, t.created_at, t.updated_at, t.amount_basis
 FROM transactions t
 JOIN payment_methods pm ON pm.account_id = t.account_id AND pm.id = t.payment_method_id
 WHERE t.account_id = $1
@@ -299,6 +300,7 @@ func (q *Queries) UnmatchedCardPurchases(ctx context.Context, arg UnmatchedCardP
 			&i.MergedIntoID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AmountBasis,
 		); err != nil {
 			return nil, err
 		}

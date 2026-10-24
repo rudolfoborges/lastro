@@ -21,6 +21,11 @@ type StatementComponentInput struct {
 	Included bool   `json:"included" jsonschema:"true when this amount is part of the item amount; false when it is charged apart in another line"`
 }
 
+type FutureInstallmentInput struct {
+	Number int    `json:"number" jsonschema:"installment number, after the one charged on this line"`
+	Amount string `json:"amount" jsonschema:"amount printed for it, canonical decimal in the statement currency"`
+}
+
 type StatementItemInput struct {
 	Kind                 string                    `json:"kind" jsonschema:"what the line is; previous balance goes in previous_balance, not here"`
 	OriginalDescription  string                    `json:"original_description" jsonschema:"the description exactly as printed on the line"`
@@ -37,6 +42,7 @@ type StatementItemInput struct {
 	Page                 int                       `json:"page" jsonschema:"page of the PDF where the line is printed, starting at 1"`
 	Excerpt              string                    `json:"excerpt" jsonschema:"the text of the line exactly as printed, so Rudolfo can find it in his PDF"`
 	Components           []StatementComponentInput `json:"components,omitempty" jsonschema:"principal, interest, IOF and fee of the line, only when the statement details them"`
+	FutureInstallments   []FutureInstallmentInput  `json:"future_installments,omitempty" jsonschema:"only when the statement prints the next installments of this same purchase; never project them yourself"`
 	Category             string                    `json:"category,omitempty" jsonschema:"suggested category code from list_categories"`
 	Purpose              string                    `json:"purpose,omitempty" jsonschema:"only when Rudolfo told you why"`
 	RelatedTransactionID string                    `json:"related_transaction_id,omitempty" jsonschema:"existing transaction that is this same charge (from the conversation or a notification)"`
@@ -521,6 +527,13 @@ func statementItem(in StatementItemInput, currency string) (ledger.StatementItem
 			return item, err
 		}
 		item.Components = append(item.Components, ledger.ChargeComponent{Kind: ledger.ComponentKind(strings.TrimSpace(component.Kind)), Amount: amount, Included: component.Included})
+	}
+	for i, future := range in.FutureInstallments {
+		amount, err := parseMoney(fmt.Sprintf("future_installments[%d].amount", i), future.Amount, currency)
+		if err != nil {
+			return item, err
+		}
+		item.FutureInstallments = append(item.FutureInstallments, ledger.FutureInstallment{Number: future.Number, Amount: amount})
 	}
 	if item.RelatedTransactionID, err = optionalID("related_transaction_id", in.RelatedTransactionID); err != nil {
 		return item, err

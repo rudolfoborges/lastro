@@ -61,6 +61,10 @@ func (k StatementItemKind) installment() bool {
 	return k == ItemInstallment || k == ItemPixInstallment
 }
 
+func (k StatementItemKind) matchable() bool {
+	return k == ItemPurchase || k == ItemRefund || k.installment()
+}
+
 type Direction string
 
 const (
@@ -136,6 +140,7 @@ type StatementItem struct {
 	Page                 int
 	Excerpt              string
 	Components           []ChargeComponent
+	FutureInstallments   []FutureInstallment
 	Category             *string
 	Purpose              *string
 	RelatedTransactionID *uuid.UUID
@@ -377,6 +382,18 @@ func normalizeItem(statement StatementExtraction, item StatementItem) (Statement
 	if err := validateComponents(item); err != nil {
 		return item, err
 	}
+	for i, future := range item.FutureInstallments {
+		field := fmt.Sprintf("future_installments[%d].", i)
+		if future.Amount.Currency != item.Amount.Currency {
+			return item, &ValidationError{Field: field + "amount", Message: "must be in the statement currency"}
+		}
+		if err := validateAmount(field+"amount", future.Amount); err != nil {
+			return item, err
+		}
+		if item.Installment != nil && (future.Number <= item.Installment.Number || future.Number > item.Installment.Count) {
+			return item, &ValidationError{Field: field + "number", Message: fmt.Sprintf("must be after %d and up to %d", item.Installment.Number, item.Installment.Count)}
+		}
+	}
 	return item, validateItemDecisions(&item)
 }
 
@@ -490,10 +507,12 @@ func validateItemDecisions(item *StatementItem) error {
 	switch {
 	case item.RelatedTransactionID != nil && item.ConfirmDistinct:
 		return &ValidationError{Field: "confirm_distinct", Message: "cannot be sent with related_transaction_id"}
-	case item.ConfirmDistinct && item.Kind != ItemPurchase && item.Kind != ItemRefund:
-		return &ValidationError{Field: "confirm_distinct", Message: "applies only to purchase and refund"}
-	case item.DeferMatch && ((item.Kind != ItemPurchase && item.Kind != ItemRefund) || item.RelatedTransactionID != nil || item.ConfirmDistinct):
-		return &ValidationError{Field: "defer_match", Message: "applies only to a purchase or refund you cannot match yet, without related_transaction_id or confirm_distinct"}
+	case item.ConfirmDistinct && !item.Kind.matchable():
+		return &ValidationError{Field: "confirm_distinct", Message: "applies only to purchase, refund and installments"}
+	case item.DeferMatch && (!item.Kind.matchable() || item.RelatedTransactionID != nil || item.ConfirmDistinct):
+		return &ValidationError{Field: "defer_match", Message: "applies only to a purchase, refund or installment you cannot match yet, without related_transaction_id or confirm_distinct"}
+	case len(item.FutureInstallments) > 0 && !item.Kind.installment():
+		return &ValidationError{Field: "future_installments", Message: "applies only to installment and pix_installment"}
 	case item.RefundOfID != nil && item.Kind != ItemRefund:
 		return &ValidationError{Field: "refund_of_id", Message: "applies only to refund"}
 	case item.RefundOfID != nil && item.RelatedTransactionID != nil:

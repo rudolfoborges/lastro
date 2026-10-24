@@ -205,6 +205,12 @@ func (s *statementSubmitter) plan(statementID uuid.UUID, before []priorLine) ver
 func (s *statementSubmitter) recordVersionLine(statement tenantdb.Statement, version tenantdb.StatementVersion, index int, item StatementItem, plan versionPlan) (StatementLine, error) {
 	prior := plan.prior[index]
 	switch {
+	case plan.items[index] == planKept && prior.TransactionID == nil && item.Kind.installment():
+		line, err := s.installment(statement, prior.ObservationID, item, false)
+		if err != nil {
+			return StatementLine{}, err
+		}
+		return s.insertLine(version, index, prior.ObservationID, item, line)
 	case plan.items[index] == planKept:
 		line := StatementLine{Effect: EffectNone}
 		if prior.TransactionID != nil {
@@ -279,6 +285,12 @@ func (s *statementSubmitter) moveEvidence(prior priorLine, observationID uuid.UU
 	}
 	if _, err := s.t.linkEvidence(transactionID, observationID, EvidenceLink{Status: EvidenceConfirmed, Origin: OriginSystem, Reasons: []string{"same line in a new version of the statement"}}); err != nil {
 		return StatementLine{}, err
+	}
+	if item.Kind.installment() {
+		err := s.t.q.MoveChargedInstallment(s.t.ctx, tenantdb.MoveChargedInstallmentParams{AccountID: s.t.accountID, FromObservationID: &prior.ObservationID, ToObservationID: &observationID, AmountMinor: item.Amount.Minor})
+		if err != nil {
+			return StatementLine{}, fmt.Errorf("move charged installment: %w", err)
+		}
 	}
 	current, err := s.t.lockOpenTransaction(transactionID)
 	if errors.Is(err, ErrTransactionClosed) {

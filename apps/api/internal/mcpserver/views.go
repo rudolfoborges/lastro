@@ -45,6 +45,7 @@ type TransactionOutput struct {
 	Merchant            *string                   `json:"merchant,omitempty"`
 	Payee               *string                   `json:"payee,omitempty"`
 	Amount              MoneyOutput               `json:"amount"`
+	AmountBasis         string                    `json:"amount_basis" jsonschema:"total, or installment when only the installment amount is known and the total of the purchase was never informed"`
 	OriginalAmount      *MoneyOutput              `json:"original_amount,omitempty"`
 	Date                DateOutput                `json:"date"`
 	PaymentMethod       *PaymentMethodOutput      `json:"payment_method,omitempty"`
@@ -93,6 +94,7 @@ func transactionOutput(tr ledger.Transaction, category *ledger.Allocation) Trans
 		Merchant:            tr.Merchant,
 		Payee:               tr.Payee,
 		Amount:              moneyOutput(tr.Amount),
+		AmountBasis:         string(tr.AmountBasis),
 		Date:                dateOutput(tr.Occurred),
 		Nature:              string(tr.Nature),
 		Status:              string(tr.Status),

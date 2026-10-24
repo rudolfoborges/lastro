@@ -142,7 +142,7 @@ func TestEveryStatementLineCanBeFoundInThePDF(t *testing.T) {
 	if len(byTransaction) != 1 || byTransaction[0].Page != 2 || byTransaction[0].Excerpt != "2026-09-14 PADARIA EXEMPLO" {
 		t.Errorf("by transaction = %+v", byTransaction)
 	}
-	if byIndex.Kind != ledger.ItemInstallment || byIndex.Page != 2 || byIndex.TransactionID != nil {
+	if byIndex.Kind != ledger.ItemInstallment || byIndex.Page != 2 || byIndex.TransactionID == nil {
 		t.Errorf("by index = %+v", byIndex)
 	}
 	var validation *ledger.ValidationError

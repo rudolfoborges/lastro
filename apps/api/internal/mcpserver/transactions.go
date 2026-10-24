@@ -86,11 +86,34 @@ type RevisionOutput struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type InstallmentOutput struct {
+	Number      int         `json:"number"`
+	Amount      MoneyOutput `json:"amount"`
+	State       string      `json:"state" jsonschema:"charged (on a statement), known_future (stated by Rudolfo or printed on a statement) or estimated (projected from a known installment or the total)"`
+	ClosingDate *string     `json:"closing_date,omitempty" jsonschema:"statement that charged or informed it"`
+	InformedOn  string      `json:"informed_on" jsonschema:"date of the information; an old date means the projection may be stale"`
+}
+
+type InstallmentPlanOutput struct {
+	Modality           string              `json:"modality" jsonschema:"card_installment or pix_installment"`
+	Count              int                 `json:"count"`
+	InstallmentAmount  *MoneyOutput        `json:"installment_amount,omitempty"`
+	AmountKnown        bool                `json:"amount_known" jsonschema:"true when Rudolfo or a statement stated the installment amount; false when it was only seen charged"`
+	Total              *MoneyOutput        `json:"total,omitempty" jsonschema:"contracted total, only when informed; never computed from one installment"`
+	InformedOn         string              `json:"informed_on"`
+	Installments       []InstallmentOutput `json:"installments" jsonschema:"charged ones and the ones still to come; numbers charged before Lastro saw the plan are left out"`
+	Charged            MoneyOutput         `json:"charged"`
+	RemainingKnown     MoneyOutput         `json:"remaining_known" jsonschema:"future installments that are known"`
+	RemainingEstimated MoneyOutput         `json:"remaining_estimated" jsonschema:"future installments that are estimated"`
+	Remaining          MoneyOutput         `json:"remaining" jsonschema:"future commitment of this plan: known plus estimated"`
+}
+
 type TransactionDetailOutput struct {
-	Transaction    TransactionOutput     `json:"transaction"`
-	Evidence       []EvidenceOutput      `json:"evidence"`
-	History        []RevisionOutput      `json:"history" jsonschema:"every change, oldest first"`
-	Clarifications []ClarificationOutput `json:"clarifications,omitempty" jsonschema:"open questions about this transaction"`
+	Transaction     TransactionOutput      `json:"transaction"`
+	InstallmentPlan *InstallmentPlanOutput `json:"installment_plan,omitempty" jsonschema:"for purchases in installments: what was charged and what is still to come"`
+	Evidence        []EvidenceOutput       `json:"evidence"`
+	History         []RevisionOutput       `json:"history" jsonschema:"every change, oldest first"`
+	Clarifications  []ClarificationOutput  `json:"clarifications,omitempty" jsonschema:"open questions about this transaction"`
 }
 
 type ListTransactionsInput struct {
@@ -225,7 +248,7 @@ func (s *Server) registerTransactions() {
 	addTool(s, toolSpec{
 		name:        "get_transaction",
 		title:       "Show a transaction",
-		description: "Returns a transaction with its categories, the evidence behind it, every change in order and the open questions about it.",
+		description: "Returns a transaction with its categories, the evidence behind it, every change in order, the open questions about it and, for a purchase in installments, its plan: what was charged and the future commitment, known or estimated.",
 		scope:       accounts.ScopeExpensesRead,
 		readOnly:    true,
 		idempotent:  true,
@@ -461,6 +484,40 @@ func detailOutput(detail ledger.TransactionDetail) TransactionDetailOutput {
 	}
 	for _, c := range detail.Clarifications {
 		out.Clarifications = append(out.Clarifications, clarificationOutput(c))
+	}
+	if detail.Plan != nil {
+		out.InstallmentPlan = planOutput(*detail.Plan)
+	}
+	return out
+}
+
+func planOutput(plan ledger.InstallmentPlan) *InstallmentPlanOutput {
+	out := &InstallmentPlanOutput{
+		Modality:           string(plan.Modality),
+		Count:              plan.Count,
+		AmountKnown:        plan.InstallmentAmountKnown,
+		InformedOn:         plan.InformedOn.String(),
+		Installments:       []InstallmentOutput{},
+		Charged:            moneyOutput(plan.Charged),
+		RemainingKnown:     moneyOutput(plan.RemainingKnown),
+		RemainingEstimated: moneyOutput(plan.RemainingEstimated),
+		Remaining:          moneyOutput(plan.Remaining()),
+	}
+	if plan.InstallmentAmount != nil {
+		amount := moneyOutput(*plan.InstallmentAmount)
+		out.InstallmentAmount = &amount
+	}
+	if plan.Total != nil {
+		total := moneyOutput(*plan.Total)
+		out.Total = &total
+	}
+	for _, installment := range plan.Installments {
+		entry := InstallmentOutput{Number: installment.Number, Amount: moneyOutput(installment.Amount), State: string(installment.State), InformedOn: installment.InformedOn.String()}
+		if installment.ClosingDate != nil {
+			closing := installment.ClosingDate.String()
+			entry.ClosingDate = &closing
+		}
+		out.Installments = append(out.Installments, entry)
 	}
 	return out
 }

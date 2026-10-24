@@ -99,6 +99,38 @@ type IdempotencyKey struct {
 	CreatedAt   time.Time
 }
 
+type Installment struct {
+	ID            uuid.UUID
+	AccountID     uuid.UUID
+	PlanID        uuid.UUID
+	Number        int32
+	AmountMinor   int64
+	State         string
+	StatementID   uuid.UUID
+	ObservationID *uuid.UUID
+	InformedOn    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type InstallmentPlan struct {
+	ID                     uuid.UUID
+	AccountID              uuid.UUID
+	TransactionID          uuid.UUID
+	PaymentModality        string
+	InstallmentCount       int32
+	Currency               string
+	InstallmentAmountMinor *int64
+	InstallmentAmountKnown bool
+	TotalMinor             *int64
+	CardLast4              *string
+	ChainKey               *string
+	InformedOn             time.Time
+	CanceledAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type Invite struct {
 	ID         uuid.UUID
 	CodeHash   []byte
@@ -308,6 +340,7 @@ type Transaction struct {
 	MergedIntoID           *uuid.UUID
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
+	AmountBasis            string
 }
 
 type TransactionEvidence struct {

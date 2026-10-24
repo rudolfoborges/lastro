@@ -186,7 +186,7 @@ const markTransactionMerged = `-- name: MarkTransactionMerged :one
 UPDATE transactions
 SET status = 'merged', merged_into_id = $1, updated_at = now()
 WHERE account_id = $2 AND id = $3
-RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 `
 
 type MarkTransactionMergedParams struct {
@@ -223,6 +223,7 @@ func (q *Queries) MarkTransactionMerged(ctx context.Context, arg MarkTransaction
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }
@@ -398,7 +399,7 @@ const restoreMergedTransaction = `-- name: RestoreMergedTransaction :one
 UPDATE transactions
 SET status = $1, merged_into_id = NULL, updated_at = now()
 WHERE account_id = $2 AND id = $3 AND status = 'merged'
-RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 `
 
 type RestoreMergedTransactionParams struct {
@@ -435,6 +436,7 @@ func (q *Queries) RestoreMergedTransaction(ctx context.Context, arg RestoreMerge
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }
@@ -443,7 +445,7 @@ const setTransactionStatus = `-- name: SetTransactionStatus :one
 UPDATE transactions
 SET status = $1, updated_at = now()
 WHERE account_id = $2 AND id = $3
-RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at
+RETURNING id, account_id, original_description, description, merchant, payee, amount_minor, currency, original_amount_minor, original_currency, occurred_at, occurred_on, date_precision, date_source, payment_method_id, nature, status, purpose, installment_count, installment_amount_minor, refund_of_id, merged_into_id, created_at, updated_at, amount_basis
 `
 
 type SetTransactionStatusParams struct {
@@ -480,6 +482,7 @@ func (q *Queries) SetTransactionStatus(ctx context.Context, arg SetTransactionSt
 		&i.MergedIntoID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AmountBasis,
 	)
 	return i, err
 }

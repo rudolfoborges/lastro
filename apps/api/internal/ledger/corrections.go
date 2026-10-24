@@ -60,6 +60,7 @@ type Patch struct {
 	Merchant      Optional[string]
 	Payee         Optional[string]
 	Amount        *money.Money
+	AmountBasis   *AmountBasis
 	Occurred      *calendar.Occurrence
 	PaymentMethod Optional[PaymentMethodRef]
 	Nature        *Nature
@@ -98,7 +99,21 @@ func (s *Service) Correct(ctx context.Context, accountID, transactionID uuid.UUI
 	err := s.inTx(ctx, accountID, func(t *tx) error {
 		var err error
 		correction, err = once(t, "update_transaction", actor, []any{transactionID, patch, reason}, func() (Correction, error) {
-			return t.correct(transactionID, patch, reason, actor)
+			correction, err := t.correct(transactionID, patch, reason, actor)
+			if err != nil {
+				return Correction{}, err
+			}
+			stated := slices.Contains(correction.Changed, FieldInstallments)
+			if stated || slices.Contains(correction.Changed, FieldAmount) {
+				loc, err := t.location()
+				if err != nil {
+					return Correction{}, err
+				}
+				if err := t.syncPlan(correction.Transaction, calendar.DateOf(time.Now(), loc), stated); err != nil {
+					return Correction{}, err
+				}
+			}
+			return correction, nil
 		})
 		return err
 	})
@@ -344,6 +359,7 @@ func (t *tx) saveTransaction(next Transaction) (Transaction, error) {
 		Nature:        string(next.Nature),
 		Status:        string(next.Status),
 		Purpose:       next.Purpose,
+		AmountBasis:   string(next.AmountBasis),
 	}
 	if next.PaymentMethod != nil {
 		params.PaymentMethodID = &next.PaymentMethod.ID
@@ -427,7 +443,10 @@ func applyPatch(current Transaction, patch Patch) (Transaction, error) {
 		next.Payee = patch.Payee.Value
 	}
 	if patch.Amount != nil {
-		next.Amount = *patch.Amount
+		next.Amount, next.AmountBasis = *patch.Amount, AmountTotal
+		if patch.AmountBasis != nil {
+			next.AmountBasis = *patch.AmountBasis
+		}
 		if next.Installments != nil && next.Installments.Amount != nil && next.Installments.Amount.Currency != next.Amount.Currency {
 			return Transaction{}, &ValidationError{Field: "amount", Message: "must keep the currency of the installments"}
 		}
@@ -468,6 +487,7 @@ func asNewTransaction(tr Transaction) NewTransaction {
 		Merchant:            tr.Merchant,
 		Payee:               tr.Payee,
 		Amount:              tr.Amount,
+		AmountBasis:         tr.AmountBasis,
 		OriginalAmount:      tr.OriginalAmount,
 		Occurred:            tr.Occurred,
 		Nature:              tr.Nature,
@@ -491,7 +511,7 @@ func copyField(dst *Transaction, src Transaction, field Field) {
 	case FieldPayee:
 		dst.Payee = src.Payee
 	case FieldAmount:
-		dst.Amount = src.Amount
+		dst.Amount, dst.AmountBasis = src.Amount, src.AmountBasis
 	case FieldOccurred:
 		dst.Occurred = src.Occurred
 	case FieldPaymentMethod:
@@ -514,7 +534,11 @@ func fieldValue(tr Transaction, field Field) json.RawMessage {
 	case FieldPayee:
 		return jsonValue(tr.Payee)
 	case FieldAmount:
-		return jsonValue(amountJSON(tr.Amount))
+		value := map[string]string{"amount": tr.Amount.Decimal(), "currency": tr.Amount.Currency}
+		if tr.AmountBasis == AmountInstallment {
+			value["basis"] = string(AmountInstallment)
+		}
+		return jsonValue(value)
 	case FieldOccurred:
 		return jsonValue(occurrenceJSON(tr.Occurred))
 	case FieldPaymentMethod:

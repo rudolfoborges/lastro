@@ -142,7 +142,7 @@ func TestListTransactionsFiltersWithoutSumming(t *testing.T) {
 		if got.isError || got.out.Count != tt.want {
 			t.Errorf("list_transactions(%v) = %+v, want %d", tt.args, got, tt.want)
 		}
-		if strings.Contains(got.text, "total") {
+		if strings.Contains(got.text, `"total":`) {
 			t.Errorf("list_transactions(%v) returned a total: %s", tt.args, got.text)
 		}
 	}

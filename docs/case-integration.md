@@ -217,3 +217,6 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] Two records of the same purchase (for example "gastei uns 33 na padaria" and the Wallet notification of R$ 32,97) become one with "é a mesma compra" (`confirm_match`); `list_transactions` no longer counts the merged one.
 - [ ] "Não era a mesma compra" right after makes Case call `undo_match`, and both records come back as they were.
 - [ ] While processing the inbox without Rudolfo, a doubtful notification is recorded pending (`defer_match`) and shows up in "quais dúvidas eu tenho?"; answering it settles the status.
+- [ ] Sending the October statement PDF again answers `already_recorded` and gives each installment line its purchase and plan; "quanto falta pagar do sofá?" is answered from `get_transaction` (`installment_plan.remaining`), estimated and with the date of the information.
+- [ ] "Comprei uma TV de 1.200 em 12x de 100" records R$ 1.200,00 with a plan of 12 known installments; the next statement links its 01/12 line to it and the remaining commitment becomes R$ 1.100,00.
+- [ ] The next statement chains each "n/N" line of October's plans by itself (`linked`) and asks only when two plans could take the same installment.
