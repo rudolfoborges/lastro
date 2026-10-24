@@ -140,3 +140,33 @@ func TestADryRunOfANewVersionChangesNothing(t *testing.T) {
 		t.Error("a dry run of a new version changed the records")
 	}
 }
+
+func TestALineThatComesBackInALaterVersionKeepsItsTransaction(t *testing.T) {
+	f := newFixture(t)
+	first := reconciledStatement()
+	v1 := f.submitStatement(first)
+	fuel := v1.Lines[6].Transaction.ID
+	without := reissued(first)
+	without.Items = append(without.Items[:6], without.Items[7:]...)
+	without.Total = brl(94182 - 20000)
+	f.submitStatement(without)
+	transactions := f.count("transactions")
+
+	back := reissued(first)
+	back.Total = brl(94182)
+	back.Items[1].Amount = brl(3300)
+	back.Total = brl(94185)
+	v3 := f.submitStatement(back)
+
+	if v3.Result != ledger.StatementNewVersion || v3.Statement.Version.Number != 3 || v3.Lines[6].Transaction.ID != fuel {
+		t.Fatalf("third version = %+v, want the fuel line back on its transaction", v3.Lines[6])
+	}
+	if f.count("transactions") != transactions {
+		t.Error("a line that came back created another transaction")
+	}
+	for _, c := range v3.Review.Clarifications {
+		if c.Subject == "removed_line" {
+			t.Errorf("removed line question still open: %+v", c)
+		}
+	}
+}

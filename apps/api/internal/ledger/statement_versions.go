@@ -20,6 +20,7 @@ const (
 	reasonVersionAmount = "Valor alterado em uma nova versão da fatura."
 	resolutionReplaced  = "A linha mudou em uma nova versão da fatura."
 	resolutionReread    = "A nova leitura da fatura não traz mais esta dúvida."
+	resolutionReturned  = "A linha voltou em uma nova versão da fatura."
 	maxDiffContextLines = 20
 )
 
@@ -236,6 +237,35 @@ func (s *statementSubmitter) recordVersionLine(statement tenantdb.Statement, ver
 		}
 		return s.record(statement, version, index, item)
 	}
+}
+
+func (s *statementSubmitter) returned(statement tenantdb.Statement, version tenantdb.StatementVersion, index int, item StatementItem, observationID uuid.UUID) (StatementLine, error) {
+	transactionID, err := s.t.q.ObservationTransaction(s.t.ctx, tenantdb.ObservationTransactionParams{AccountID: s.t.accountID, ObservationID: observationID})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		line, err := s.apply(statement, observationID, item)
+		if err != nil {
+			return StatementLine{}, err
+		}
+		return s.insertLine(version, index, observationID, item, line)
+	case err != nil:
+		return StatementLine{}, fmt.Errorf("transaction of an earlier line: %w", err)
+	}
+	removed := dedupKey(newClarification{kind: ClarificationStatementVersionDiff, transactionID: &transactionID, observationID: &observationID, statementID: &statement.ID, subject: subjectRemovedLine})
+	row, err := s.t.q.GetOpenClarificationByDedupKey(s.t.ctx, tenantdb.GetOpenClarificationByDedupKeyParams{AccountID: s.t.accountID, DedupKey: removed})
+	switch {
+	case err == nil:
+		if _, err := s.t.closeClarification(row, ClarificationResolved, resolutionReturned, AuthorSystem); err != nil {
+			return StatementLine{}, err
+		}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return StatementLine{}, fmt.Errorf("find removed line question: %w", err)
+	}
+	line, err := s.withTransaction(StatementLine{Effect: EffectNone}, transactionID)
+	if err != nil {
+		return StatementLine{}, err
+	}
+	return s.insertLine(version, index, observationID, item, line)
 }
 
 func (s *statementSubmitter) moveEvidence(prior priorLine, observationID uuid.UUID, item StatementItem) (StatementLine, error) {

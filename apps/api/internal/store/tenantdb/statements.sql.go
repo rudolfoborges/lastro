@@ -549,6 +549,24 @@ func (q *Queries) LockStatementByIdentity(ctx context.Context, arg LockStatement
 	return i, err
 }
 
+const observationTransaction = `-- name: ObservationTransaction :one
+SELECT transaction_id
+FROM transaction_evidence
+WHERE account_id = $1 AND observation_id = $2 AND status = 'confirmed'
+`
+
+type ObservationTransactionParams struct {
+	AccountID     uuid.UUID
+	ObservationID uuid.UUID
+}
+
+func (q *Queries) ObservationTransaction(ctx context.Context, arg ObservationTransactionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, observationTransaction, arg.AccountID, arg.ObservationID)
+	var transaction_id uuid.UUID
+	err := row.Scan(&transaction_id)
+	return transaction_id, err
+}
+
 const openStatementReviewClarifications = `-- name: OpenStatementReviewClarifications :many
 SELECT c.id, c.account_id, c.kind, c.transaction_id, c.observation_id, c.subject, c.dedup_key, c.question, c.context, c.status, c.resolution, c.resolved_by, c.resolved_at, c.created_at, c.updated_at, c.statement_id
 FROM clarifications c

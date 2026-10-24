@@ -139,3 +139,8 @@ JOIN observations o ON o.account_id = l.account_id AND o.id = l.observation_id
 LEFT JOIN transaction_evidence e ON e.account_id = l.account_id AND e.observation_id = l.observation_id AND e.status = 'confirmed'
 WHERE l.account_id = @account_id AND l.statement_version_id = @statement_version_id
 ORDER BY l.position;
+
+-- name: ObservationTransaction :one
+SELECT transaction_id
+FROM transaction_evidence
+WHERE account_id = @account_id AND observation_id = @observation_id AND status = 'confirmed';

@@ -174,9 +174,17 @@ func (s *statementSubmitter) insertVersion(statementID uuid.UUID, number int32, 
 }
 
 func (s *statementSubmitter) record(statement tenantdb.Statement, version tenantdb.StatementVersion, index int, item StatementItem) (StatementLine, error) {
+	key := s.identities[index].sourceKey(statement.ID)
+	existing, err := s.t.q.GetObservationBySourceKey(s.t.ctx, tenantdb.GetObservationBySourceKeyParams{AccountID: s.t.accountID, Source: string(SourceStatementLine), SourceKey: key})
+	switch {
+	case err == nil:
+		return s.returned(statement, version, index, item, existing.ID)
+	case !errors.Is(err, pgx.ErrNoRows):
+		return StatementLine{}, fmt.Errorf("find line of an earlier version: %w", err)
+	}
 	observation, err := s.t.recordObservation(NewObservation{
 		Source:     SourceStatementLine,
-		SourceKey:  s.identities[index].sourceKey(statement.ID),
+		SourceKey:  key,
 		Payload:    s.linePayload(statement, item),
 		ReceivedAt: s.receivedAt,
 	})
