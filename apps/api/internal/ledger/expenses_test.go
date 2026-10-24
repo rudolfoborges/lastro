@@ -2,6 +2,8 @@ package ledger_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"slices"
 	"strings"
@@ -53,6 +55,29 @@ func (f *fixture) count(table string) int {
 		f.t.Fatal(err)
 	}
 	return count
+}
+
+func TestTheChatGPTConversationIDIsStoredOnlyAsAHash(t *testing.T) {
+	f := newFixture(t)
+
+	f.record(supermarket("message-1"))
+
+	conn, err := pgx.Connect(t.Context(), f.databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	var payload map[string]any
+	if err := conn.QueryRow(t.Context(), "SELECT payload FROM observations WHERE source = 'conversation'").Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256([]byte("conversation-1"))
+	if _, kept := payload["conversation"]; kept || payload["conversation_hash"] != hex.EncodeToString(want[:]) {
+		t.Errorf("payload = %+v, want only the SHA-256 of the conversation ID", payload)
+	}
+	if again := f.record(supermarket("message-2")); again.Result != ledger.ExpensePossibleDuplicate {
+		t.Errorf("same text in the same conversation = %s, want possible_duplicate", again.Result)
+	}
 }
 
 func TestRecordingAnExpenseFromTheConversation(t *testing.T) {

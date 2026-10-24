@@ -44,6 +44,10 @@ func (m *Migrator) Up(ctx context.Context) ([]*goose.MigrationResult, error) {
 	return m.provider.Up(ctx)
 }
 
+func (m *Migrator) UpTo(ctx context.Context, version int64) ([]*goose.MigrationResult, error) {
+	return m.provider.UpTo(ctx, version)
+}
+
 func (m *Migrator) Down(ctx context.Context) (*goose.MigrationResult, error) {
 	return m.provider.Down(ctx)
 }
