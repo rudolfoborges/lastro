@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -360,6 +361,37 @@ func TestOnlyAnAdminKeyAuthorizesAndRudolfoCanRevoke(t *testing.T) {
 	}
 	if e.mcpWorks(tokens["access_token"].(string)) {
 		t.Error("a revoked grant still opens /mcp")
+	}
+}
+
+func TestRevokingAnAdminKeyRevokesTheGrantsItAuthorized(t *testing.T) {
+	e := newOAuthEnv(t)
+	invite, err := e.accounts.CreateInvite(t.Context(), time.Hour, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, owner, err := e.accounts.SignUp(t.Context(), invite.Code, "Rudolfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	laptop, err := e.accounts.CreateKey(t.Context(), account.ID, "laptop", []string{"admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, byLaptop := e.exchange(chatGPTClientID, chatGPTRedirect, e.approve(chatGPTClientID, chatGPTRedirect, laptop.Token, "expenses:read").Get("code"))
+	_, byOwner := e.exchange(chatGPTClientID, chatGPTRedirect, e.approve(chatGPTClientID, chatGPTRedirect, owner.Token, "expenses:read").Get("code"))
+
+	e.adminCall(http.MethodPost, "/v1/api-keys/"+laptop.ID.String()+"/revoke", owner.Token)
+
+	if e.mcpWorks(byLaptop["access_token"].(string)) {
+		t.Error("a grant authorized with a revoked admin key still opens /mcp")
+	}
+	status, body := e.token(url.Values{"grant_type": {"refresh_token"}, "client_id": {chatGPTClientID}, "refresh_token": {byLaptop["refresh_token"].(string)}})
+	if status != http.StatusBadRequest || body["error"] != "invalid_grant" {
+		t.Errorf("refreshing a grant of a revoked key = %d %+v", status, body)
+	}
+	if !e.mcpWorks(byOwner["access_token"].(string)) {
+		t.Error("revoking one admin key revoked a grant authorized with another")
 	}
 }
 

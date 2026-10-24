@@ -91,6 +91,22 @@ func (q *Queries) RevokeAccountOAuthGrant(ctx context.Context, arg RevokeAccount
 	return i, err
 }
 
+const revokeOAuthGrantsAuthorizedByKey = `-- name: RevokeOAuthGrantsAuthorizedByKey :exec
+UPDATE oauth_grants
+SET revoked_at = now()
+WHERE account_id = $1 AND api_key_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeOAuthGrantsAuthorizedByKeyParams struct {
+	AccountID uuid.UUID
+	ApiKeyID  uuid.UUID
+}
+
+func (q *Queries) RevokeOAuthGrantsAuthorizedByKey(ctx context.Context, arg RevokeOAuthGrantsAuthorizedByKeyParams) error {
+	_, err := q.db.Exec(ctx, revokeOAuthGrantsAuthorizedByKey, arg.AccountID, arg.ApiKeyID)
+	return err
+}
+
 const touchOAuthGrant = `-- name: TouchOAuthGrant :exec
 UPDATE oauth_grants
 SET last_used_at = now()

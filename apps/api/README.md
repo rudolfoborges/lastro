@@ -91,7 +91,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `PATCH /v1/account` | `admin` | Changes the account settings: `{"timezone": "America/Sao_Paulo"}` |
 | `GET /v1/api-keys` | `admin` | Lists the account's keys, never their tokens |
 | `POST /v1/api-keys` | `admin` | Creates a key with the given scopes and returns its token once |
-| `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately; the last active `admin` key cannot be revoked |
+| `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately, together with the OAuth grants it authorized; the last active `admin` key cannot be revoked |
 | `POST /v1/wallet/notifications` | `wallet:ingest` | Receives one notification event from the Android app (see [Wallet notifications](#wallet-notifications)) |
 | `GET /v1/wallet/notifications` | `wallet:ingest` | The latest notification versions of one device and what Case did with each (see [What the app sees](#what-the-app-sees)) |
 | `POST /v1/wallet/heartbeat` | `wallet:ingest` | Sign of life from the Android app with its version and permissions; answers the tracking state (see [Coverage](#coverage)) |
@@ -334,7 +334,7 @@ ChatGPT, where Case runs, only connects to MCP servers through OAuth 2.1, so Las
 2. It identifies itself with a **client ID metadata document** (CIMD, `client_id=https://chatgpt.com/oauth/client.json`), fetched over HTTPS from an allowed host with a timeout, a size cap, no redirects and no private addresses, and cached for an hour. **Dynamic client registration** (`/oauth/register`) is the fallback; it only accepts redirect URIs on `OAUTH_REDIRECT_HOSTS`.
 3. `/oauth/authorize` validates client, exact redirect URI, `response_type=code`, PKCE `S256` and `resource`, then shows the consent page (pt-BR, no framing, strict CSP). Rudolfo pastes the admin key and picks the scopes; the server creates a **grant** bound to the account and redirects with `code`, `state` and `iss` (RFC 9207).
 4. `/oauth/token` exchanges the code (single use, one minute, PKCE verified; a replayed code revokes the grant) for an access token (`lat_…`, one hour) and a refresh token (`lrt_…`, 30 days). Refresh tokens rotate; reusing an old one revokes the whole grant.
-5. Access tokens only work on `/mcp` (their audience); `/v1` keeps accepting API keys only. Grants are listed and revoked with the admin key at `/v1/oauth/grants`.
+5. Access tokens only work on `/mcp` (their audience); `/v1` keeps accepting API keys only. Grants are listed and revoked with the admin key at `/v1/oauth/grants`; revoking the admin key that authorized a grant revokes the grant too.
 
 Only hashes of codes, tokens and client secrets are stored; none of them reach the logs. Every request made with a grant is audited like an API key request.
 

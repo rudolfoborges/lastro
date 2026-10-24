@@ -36,7 +36,7 @@ ChatGPT's labels change over time; the steps are what matters.
 4. Back in ChatGPT, the app lists Lastro's tools. Create a **project** for Case, enable the Lastro app in it, and paste the [project instructions](#project-instructions) below.
 5. ChatGPT asks for confirmation before write actions. Approving them for the Lastro app avoids a prompt on every expense.
 
-To disconnect ChatGPT, delete the app there or revoke its access in Lastro:
+To disconnect ChatGPT, delete the app there or revoke its access in Lastro. Revoking the `admin` key used on the consent page also revokes the access it granted.
 
 ```bash
 curl -H "Authorization: Bearer $ADMIN" https://api-production-9ee63.up.railway.app/v1/oauth/grants
