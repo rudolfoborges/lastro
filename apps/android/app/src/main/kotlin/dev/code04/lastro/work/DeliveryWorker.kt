@@ -6,6 +6,7 @@ import androidx.work.WorkerParameters
 import dev.code04.lastro.data.LocalStore
 import dev.code04.lastro.data.Settings
 import dev.code04.lastro.net.DeliveryOutcome
+import dev.code04.lastro.net.DeliveryReceipt
 import dev.code04.lastro.net.LastroClient
 import dev.code04.lastro.net.Payloads
 import org.json.JSONObject
@@ -31,7 +32,7 @@ class DeliveryWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 }
                 when (DeliveryOutcome.of(response.status, response.errorCode)) {
                     DeliveryOutcome.DELIVERED -> {
-                        store.delivered(item.id)
+                        store.delivered(item, DeliveryReceipt.from(response.body))
                         settings.lastSentAt = System.currentTimeMillis()
                         settings.lastError = ""
                     }
@@ -44,8 +45,9 @@ class DeliveryWorker(context: Context, params: WorkerParameters) : CoroutineWork
                         return Result.failure()
                     }
                     DeliveryOutcome.DROP -> {
-                        store.delivered(item.id)
-                        settings.lastError = "Notificação recusada (${response.status}): ${response.body?.optString("message").orEmpty()}"
+                        val reason = "Notificação recusada (${response.status}): ${response.body?.optString("message").orEmpty()}"
+                        store.refused(item, reason)
+                        settings.lastError = reason
                     }
                 }
             }

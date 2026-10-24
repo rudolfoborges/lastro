@@ -43,3 +43,17 @@ VALUES (
 )
 RETURNING *;
 
+
+-- name: ListDeviceNotificationVersions :many
+SELECT v.observation_id, v.notification_id, n.notification_key, v.version, v.event, v.posted_at, v.received_at, n.removed_at
+FROM wallet_notification_versions v
+JOIN wallet_notifications n ON n.account_id = v.account_id AND n.id = v.notification_id
+JOIN wallet_devices d ON d.account_id = n.account_id AND d.id = n.wallet_device_id
+WHERE v.account_id = @account_id AND d.device_id = @device_id
+ORDER BY v.received_at DESC, v.observation_id DESC
+LIMIT @row_limit;
+
+-- name: TransactionStatuses :many
+SELECT id, status
+FROM transactions
+WHERE account_id = @account_id AND id = ANY(@transaction_ids::uuid[]);

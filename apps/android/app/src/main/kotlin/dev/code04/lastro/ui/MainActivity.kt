@@ -2,52 +2,36 @@ package dev.code04.lastro.ui
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
 import android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.activity.enableEdgeToEdge
 import androidx.core.net.toUri
 import dev.code04.lastro.data.LocalStore
 import dev.code04.lastro.data.Settings
+import dev.code04.lastro.ui.theme.LastroTheme
 import dev.code04.lastro.work.Scheduling
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
+        val dashboard = Dashboard(this)
         setContent {
-            MaterialTheme {
-                Surface {
-                    StatusScreen(actions = actions(), snapshot = ::snapshot)
-                }
+            LastroTheme {
+                LastroApp(dashboard = dashboard, actions = actions())
             }
         }
     }
 
-    private fun snapshot(): StatusSnapshot {
-        val settings = Settings(this)
-        val store = LocalStore.get(this)
-        return StatusSnapshot(
-            serverUrl = settings.serverUrl,
-            deviceId = settings.deviceId,
-            hasApiKey = settings.hasApiKey,
-            sendingEnabled = settings.sendingEnabled,
-            paused = settings.paused,
-            allowlist = settings.allowlist.sorted().joinToString(", "),
-            notificationAccess = DeviceChecks.hasNotificationAccess(this),
-            batteryUnrestricted = DeviceChecks.isBatteryUnrestricted(this),
-            queueSize = store.queueSize(),
-            captureCount = store.captureCount(),
-            lastSentAt = settings.lastSentAt,
-            lastHeartbeatAt = settings.lastHeartbeatAt,
-            serverTracking = settings.serverTracking,
-            lastError = settings.lastError,
-        )
-    }
-
-    private fun actions() = StatusActions(
+    private fun actions() = SettingsActions(
         openNotificationAccess = { startActivity(Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
         requestBatteryExemption = ::requestBatteryExemption,
         saveDestination = { url, token, allowlist ->
@@ -55,6 +39,7 @@ class MainActivity : ComponentActivity() {
             settings.serverUrl = url
             if (token.isNotBlank()) settings.saveApiKey(token)
             settings.allowlist = allowlist.split(',').toSet()
+            settings.lastError = ""
             refreshScheduling()
         },
         forgetApiKey = {

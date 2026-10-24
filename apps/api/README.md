@@ -93,6 +93,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `POST /v1/api-keys` | `admin` | Creates a key with the given scopes and returns its token once |
 | `POST /v1/api-keys/{id}/revoke` | `admin` | Revokes a key immediately; the last active `admin` key cannot be revoked |
 | `POST /v1/wallet/notifications` | `wallet:ingest` | Receives one notification event from the Android app (see [Wallet notifications](#wallet-notifications)) |
+| `GET /v1/wallet/notifications` | `wallet:ingest` | The latest notification versions of one device and what Case did with each (see [What the app sees](#what-the-app-sees)) |
 | `POST /v1/wallet/heartbeat` | `wallet:ingest` | Sign of life from the Android app with its version and permissions; answers the tracking state (see [Coverage](#coverage)) |
 
 Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
@@ -263,6 +264,37 @@ A notification version is pending while its observation has no interpretation. C
 - **Idempotency:** each interpretation stores a hash of the submitted reading. The same reading again answers `already_applied`. A different one is refused (`already_interpreted`) unless Case sends `reinterpret` with a reason; then a purchase reading corrects the same transaction, and a non-expense reading undoes the evidence and voids the transaction the notification created. Other changes are refused (`reinterpretation_not_supported`).
 - **Possible matches:** a `purchase` without `related_transaction_id` is checked against transactions of earlier versions of the same notification and against open purchases with the same amount and currency within two days that no notification confirms yet. If there are any, nothing is written and the answer is `possible_match` with the candidates and the reasons in pt-BR. Case decides: `related_transaction_id` for the same purchase, `confirm_distinct` for another.
 - **Invariants:** a transaction confirmed by one notification cannot be confirmed by another, a cancellation cannot void a charged purchase, and refunds cannot add up to more than the purchase.
+
+### What the app sees
+
+`GET /v1/wallet/notifications?device_id=galaxy-s24&limit=50` (`wallet:ingest`, `limit` 1 to 100, 50 by default) lists the latest versions received from that device, newest first, so the app can show whether Case already processed each one:
+
+```json
+{
+  "notifications": [
+    {
+      "notification_id": "…",
+      "notification_key": "0|com.google.android.apps.walletnfcrel|7|null|10123",
+      "version": 1,
+      "event": "posted",
+      "posted_at": "2026-10-22T15:04:05Z",
+      "received_at": "2026-10-22T15:04:25Z",
+      "status": "interpreted",
+      "interpretation": {
+        "event_type": "purchase",
+        "effect": "created",
+        "transaction": {
+          "status": "provisional",
+          "category": { "code": "meals", "label": "Alimentação e refeições", "status": "suggested" }
+        }
+      }
+    }
+  ]
+}
+```
+
+- `status` is `pending_interpretation` until Case submits a reading, then `interpreted` with the latest reading (`event_type`, `effect`) and the current status and category of the transaction it touched.
+- The text never comes back: the app already keeps it, and a leaked device key reveals no more than which notifications Case processed and how they were classified.
 
 ### Coverage
 
