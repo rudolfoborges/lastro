@@ -40,7 +40,7 @@ Secrets live only in Railway variables. Never commit them to `.railway/railway.t
    railway domain status <host> --service api   # CNAME target and the _railway-verify TXT record
    ```
 
-   Create both DNS records at the zone's provider, **DNS only** (no Cloudflare proxy: it would terminate TLS, see the traffic in clear and hide the client IP from the rate limit). The certificate is issued once Railway sees them. Production uses `lastro.code04.dev`; Case and the Android app use this host for `/mcp` and the wallet webhook. While its certificate is not issued, `PUBLIC_BASE_URL` temporarily points to the Railway domain (`https://api-production-9ee63.up.railway.app`); switching back requires re-authorizing ChatGPT, because OAuth tokens are bound to the address they were issued for.
+   Create both DNS records at the zone's provider, **DNS only** (no Cloudflare proxy: it would terminate TLS, see the traffic in clear and hide the client IP from the rate limit). The certificate is issued once Railway sees them. Production is served at the Railway domain (`https://api-production-9ee63.up.railway.app`), which is also `PUBLIC_BASE_URL`; Case and the Android app use it for `/mcp` and the wallet webhook. `lastro.code04.dev` stays registered but parked: its certificate hit the Let's Encrypt rate limit (#83). Moving to a custom domain requires changing `PUBLIC_BASE_URL` and re-authorizing ChatGPT, because OAuth tokens are bound to the address they were issued for.
 5. Keep Postgres private: if the database service has a TCP proxy (public networking), remove it. The API only needs the private network.
 6. Create the first account:
 
