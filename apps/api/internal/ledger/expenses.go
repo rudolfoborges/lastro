@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -172,7 +173,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 		"interpreted": interpreted,
 	}
 	if report.Conversation != "" {
-		payload["conversation"] = report.Conversation
+		payload["conversation_hash"] = conversationHash(report.Conversation)
 	}
 	observation, err := t.recordObservation(NewObservation{
 		Source:      SourceConversation,
@@ -393,6 +394,11 @@ func (r ExpenseReport) messageAt() time.Time {
 func hashableReport(report ExpenseReport) ExpenseReport {
 	report.ReceivedAt = time.Time{}
 	return report
+}
+
+func conversationHash(conversation string) string {
+	sum := sha256.Sum256([]byte(conversation))
+	return hex.EncodeToString(sum[:])
 }
 
 func repetitionFingerprint(report ExpenseReport) []byte {

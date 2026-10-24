@@ -347,7 +347,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
 - **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
-- **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument.
+- **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
