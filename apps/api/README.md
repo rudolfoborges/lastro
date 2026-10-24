@@ -266,6 +266,16 @@ A notification version is pending while its observation has no interpretation. C
 - **Possible matches:** a `purchase` without `related_transaction_id` is checked against transactions of earlier versions of the same notification and against open purchases with the same amount and currency within two days that no notification confirms yet. If there are any, nothing is written and the answer is `possible_match` with the candidates and the reasons in pt-BR. Case decides: `related_transaction_id` for the same purchase, `confirm_distinct` for another.
 - **Invariants:** a transaction confirmed by one notification cannot be confirmed by another, a cancellation cannot void a charged purchase, and refunds cannot add up to more than the purchase.
 
+### Statements
+
+Rudolfo sends the statement PDF to Case, which reads it and calls `submit_statement_extraction` (`ledger.Service.SubmitStatement`) with the structured reading. **The PDF never reaches the server.** The contract is published as JSON Schema in [`docs/statement-extraction.schema.json`](docs/statement-extraction.schema.json) (kept in sync by a test; regenerate with `UPDATE_SCHEMAS=1`), and a synthetic reading lives in `internal/mcpserver/testdata/statements/complete.json`.
+
+- **Identity:** issuer (compared without case, accents or punctuation), the holder's card last 4 digits and the closing date. The same reading again (same metadata and the same lines, in any order) answers `already_recorded` and writes nothing. A different reading of the same statement is refused with `statement_version_not_supported` until versions arrive (#37).
+- **All or nothing:** the reading is validated and written in one transaction. Every item needs `page` and `excerpt`, amounts are positive in the statement currency (the kind gives the direction; `adjustment` and `unknown` carry `direction`), `n/N` is coherent and the included components (principal, interest, IOF, fee) add up to the item. Errors point to the field, such as `items[3].page`.
+- **Lines:** each item becomes an observation `statement_line` whose `source_key` is the statement plus a hash of its normalized description, amount, card, date and `n/N`, plus the ordinal of identical lines, so two legitimate identical lines stay two observations. `statement_lines` keeps, per version, the kind, direction, amount, page and excerpt.
+- **Effects:** `purchase`, `interest`, `fee`, `tax`, `credit`, `refund`, `payment` and `adjustment` create a `confirmed` transaction on the line's credit card (natures `expense`, `charge`, `credit`, `refund`, `payment`, `adjustment`). `installment` and `pix_installment` stay only in the statement until installment plans exist (#40). `unknown` opens a `reading_doubt` on the line. Reading doubts open `reading_doubt` clarifications on the statement.
+- **Lines already recorded elsewhere:** a `purchase` or `refund` without `related_transaction_id` is checked against open transactions of the same nature with the same amount (or the same original amount for international lines), within five days of the line date and not yet charged by a statement line, paid by credit card or with no payment method. If any item has candidates, nothing is written and the answer is `possible_match`, with the candidates per item. Case resends the whole reading deciding each item: `related_transaction_id` links the line, fills what is missing (card, merchant, date, installments, the amount when it differs in the same currency) and confirms the transaction; `confirm_distinct` creates a new one. A transaction already charged by a statement line cannot be linked to another line, except installments.
+
 ### What the app sees
 
 `GET /v1/wallet/notifications?device_id=galaxy-s24&limit=50` (`wallet:ingest`, `limit` 1 to 100, 50 by default) lists the latest versions received from that device, newest first, so the app can show whether Case already processed each one:
@@ -343,16 +353,16 @@ Only hashes of codes, tokens and client secrets are stored; none of them reach t
 
 Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Streamable HTTP in stateless mode with JSON responses, so every request is authenticated on its own and any instance can answer it; `lastro mcp-stdio` serves the same tools over stdio for local clients.
 
-- **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes) and refuses the call with a `forbidden` tool error otherwise.
+- **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes, `statements:write` for statements) and refuses the call with a `forbidden` tool error otherwise.
 - **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
-- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`) for other clients. The server `instructions` summarize the rules.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
 - **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -367,8 +377,9 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `submit_notification_interpretations` | `expenses:write` | Applies Case's reading of up to 50 notification versions, each on its own |
 | `get_coverage_status` | `expenses:read` | Tracking state, gaps, pauses, late deliveries, inbox and phone status for a period of days, with the limitations to relay |
 | `set_tracking` | `expenses:write` | Turns automatic tracking on or off and sets the inbox interval, only when Rudolfo asks |
+| `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line |
 
-Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` is the exception: it is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)).
+Every write tool takes a `request_id` that Case generates once per intention and reuses on retries; the ledger runs it through `idempotency.Do` in the same transaction. `submit_notification_interpretations` and `submit_statement_extraction` are the exceptions: the first is idempotent per notification version (see [Interpreting notifications](#interpreting-notifications)), the second by the statement identity and the content of the reading (see [Statements](#statements)).
 
 ## Sensitive data
 

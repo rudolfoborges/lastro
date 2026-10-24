@@ -52,6 +52,8 @@ const (
 	subjectTransaction    = "transaction"
 )
 
+var categorizedNatures = []Nature{NatureExpense, NatureCharge, NatureRefund}
+
 var ErrClarificationClosed = errors.New("the clarification is already resolved or dismissed")
 
 var fieldLabels = map[Field]string{
@@ -72,6 +74,7 @@ type Clarification struct {
 	Kind          ClarificationKind
 	TransactionID *uuid.UUID
 	ObservationID *uuid.UUID
+	StatementID   *uuid.UUID
 	Subject       string
 	Question      string
 	Context       map[string]any
@@ -114,6 +117,7 @@ type newClarification struct {
 	kind          ClarificationKind
 	transactionID *uuid.UUID
 	observationID *uuid.UUID
+	statementID   *uuid.UUID
 	subject       string
 	question      string
 	context       map[string]any
@@ -270,14 +274,17 @@ func (t *tx) refreshClarifications(transactionID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if current == nil {
+	switch {
+	case !slices.Contains(categorizedNatures, transaction.Nature):
+		err = t.closeTransactionClarifications(transactionID, []ClarificationKind{ClarificationCategoryUnknown}, ClarificationResolved, "Categoria não se aplica a esta natureza.")
+	case current == nil:
 		err = t.openClarification(newClarification{
 			kind:          ClarificationCategoryUnknown,
 			transactionID: &transactionID,
 			subject:       subjectTransaction,
 			question:      fmt.Sprintf("Qual a categoria de %s?", describe(transaction)),
 		})
-	} else {
+	default:
 		err = t.closeTransactionClarifications(transactionID, []ClarificationKind{ClarificationCategoryUnknown}, ClarificationResolved, "Categoria definida.")
 	}
 	if err != nil {
@@ -346,6 +353,7 @@ func (t *tx) openClarification(in newClarification) error {
 		Kind:          string(in.kind),
 		TransactionID: in.transactionID,
 		ObservationID: in.observationID,
+		StatementID:   in.statementID,
 		Subject:       in.subject,
 		DedupKey:      key,
 		Question:      in.question,
@@ -400,6 +408,7 @@ func (t *tx) withTarget(row tenantdb.Clarification) (Clarification, error) {
 		Kind:          ClarificationKind(row.Kind),
 		TransactionID: row.TransactionID,
 		ObservationID: row.ObservationID,
+		StatementID:   row.StatementID,
 		Subject:       row.Subject,
 		Question:      row.Question,
 		Status:        ClarificationStatus(row.Status),
@@ -431,6 +440,9 @@ func dedupKey(in newClarification) string {
 	}
 	if in.observationID != nil {
 		parts = append(parts, "observation:"+in.observationID.String())
+	}
+	if in.statementID != nil {
+		parts = append(parts, "statement:"+in.statementID.String())
 	}
 	return strings.Join(parts, "|")
 }

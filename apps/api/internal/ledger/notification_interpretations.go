@@ -328,7 +328,7 @@ func (a *interpreter) createRefund() (applied, error) {
 	}
 	var original *Transaction
 	if a.in.RelatedTransactionID != nil {
-		purchase, err := a.refundable(*a.in.RelatedTransactionID)
+		purchase, err := a.t.refundable(*a.in.RelatedTransactionID, *a.in.Amount, "related_transaction_id")
 		if err != nil {
 			return applied{}, err
 		}
@@ -363,22 +363,22 @@ func (a *interpreter) createRefund() (applied, error) {
 	return applied{effect: EffectRefundCreated, transactionID: &created.ID}, a.t.refreshClarifications(created.ID)
 }
 
-func (a *interpreter) refundable(transactionID uuid.UUID) (Transaction, error) {
-	purchase, err := a.t.lockOpenTransaction(transactionID)
+func (t *tx) refundable(transactionID uuid.UUID, amount money.Money, field string) (Transaction, error) {
+	purchase, err := t.lockOpenTransaction(transactionID)
 	if err != nil {
 		return Transaction{}, err
 	}
 	if purchase.Nature != NatureExpense {
-		return Transaction{}, &ValidationError{Field: "related_transaction_id", Message: "must be the purchase being refunded (nature expense)"}
+		return Transaction{}, &ValidationError{Field: field, Message: "must be the purchase being refunded (nature expense)"}
 	}
-	if purchase.Amount.Currency != a.in.Amount.Currency {
+	if purchase.Amount.Currency != amount.Currency {
 		return Transaction{}, &ValidationError{Field: "currency", Message: fmt.Sprintf("must be %s, the currency of the refunded purchase", purchase.Amount.Currency)}
 	}
-	refunded, err := a.t.q.SumRefunds(a.t.ctx, tenantdb.SumRefundsParams{AccountID: a.t.accountID, RefundOfID: &transactionID})
+	refunded, err := t.q.SumRefunds(t.ctx, tenantdb.SumRefundsParams{AccountID: t.accountID, RefundOfID: &transactionID})
 	if err != nil {
 		return Transaction{}, fmt.Errorf("sum refunds: %w", err)
 	}
-	if refunded+a.in.Amount.Minor > purchase.Amount.Minor {
+	if refunded+amount.Minor > purchase.Amount.Minor {
 		return Transaction{}, &ValidationError{Field: "amount", Message: fmt.Sprintf("refunds would exceed the purchase of %s", purchase.Amount.Format())}
 	}
 	return purchase, nil

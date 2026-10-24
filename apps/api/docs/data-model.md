@@ -20,6 +20,11 @@ erDiagram
     categories ||--o{ category_allocations : receives
     transactions |o--o{ clarifications : "raises"
     observations |o--o{ clarifications : "raises"
+    statements |o--o{ clarifications : "raises"
+    payment_methods ||--o{ statements : "is billed in"
+    statements ||--o{ statement_versions : "is read as"
+    statement_versions ||--o{ statement_lines : lists
+    observations ||--o{ statement_lines : "is printed as"
     transactions ||--o{ revisions : "changes are recorded in"
     accounts ||--o{ idempotency_keys : "dedupes submissions with"
 
@@ -130,6 +135,36 @@ erDiagram
         text author "user, agent, rule, system"
         uuid observation_id FK
     }
+    statements {
+        uuid id PK
+        text issuer "as printed"
+        text issuer_key "lowercase letters and digits, part of the identity"
+        text card_last4 "holder's card, part of the identity"
+        date closing_date "part of the identity"
+        uuid payment_method_id FK
+    }
+    statement_versions {
+        uuid id PK
+        uuid statement_id FK
+        int version "1, 2, ... per statement"
+        date due_date
+        bigint informed_total_minor "signed: a credit balance is negative"
+        bigint previous_balance_minor
+        text reading "complete, partial"
+        text missing "what a partial reading lacks"
+        bytea content_hash "identifies an identical reading"
+    }
+    statement_lines {
+        uuid id PK
+        uuid statement_version_id FK
+        uuid observation_id FK
+        int position
+        text kind "purchase, installment, pix_installment, interest, fee, tax, credit, refund, payment, adjustment, unknown"
+        text direction "debit, credit"
+        bigint amount_minor
+        int page
+        text excerpt "as printed, redacted"
+    }
     idempotency_keys {
         text operation PK
         text key PK
@@ -149,5 +184,6 @@ Outside the diagram: `tool_calls` and `api_requests` audit every MCP tool call a
 - **Dates keep their precision.** `occurred_at` exists only for `exact`; `occurred_on` is null only for `unknown`; `month` dates sit on the first day of the month.
 - **Merges keep both sides.** `status = 'merged'` exactly when `merged_into_id` is set, so the merged transaction and its evidence remain queryable and the merge can be undone.
 - **One category per transaction.** A transaction has at most one current row in `category_allocations` (`category_allocations_one_current_idx`), and deferred constraint triggers refuse, at commit, a category whose amount differs from the transaction's. Older rows are superseded, never deleted.
+- **Statements are read, not edited.** `statement_versions` and `statement_lines` have no `UPDATE`; a statement is identified by `(issuer_key, card_last4, closing_date)` and every line has a page and an excerpt. A clarification points to a transaction, an observation or a statement (at least one).
 - **History is append-only.** `revisions`, `idempotency_keys`, `tool_calls` and `api_requests` have no `UPDATE` for the application role.
 - **Field provenance.** For each field of a transaction, `field_provenance` names the observation it came from and whether Rudolfo confirmed it; confirmed fields are protected from automatic overwrites. Categories carry their own status and origin in `category_allocations`.

@@ -23,6 +23,7 @@ var topics = []topic{
 	{name: "conversation", prompt: "conversation_procedure", description: "How to record, confirm and correct expenses Rudolfo reports in the conversation"},
 	{name: "classification", prompt: "classification_policy", description: "Taxonomy and rules to classify expenses into categories and purpose"},
 	{name: "notifications", prompt: "process_pending_notifications", description: "How to interpret the Google Wallet notifications waiting in the inbox"},
+	{name: "statements", prompt: "process_statement", description: "How to read a credit card statement PDF and submit the reading"},
 }
 
 type GetInstructionsInput struct {
@@ -42,7 +43,7 @@ func (s *Server) registerInstructions() {
 	addTool(s, toolSpec{
 		name:        "get_instructions",
 		title:       "Read a Lastro procedure",
-		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses), classification (categories and purpose) or notifications (the Google Wallet inbox). Read conversation before recording, classification before classifying and notifications before processing the inbox.",
+		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses), classification (categories and purpose), notifications (the Google Wallet inbox) or statements (credit card statement PDFs). Read conversation before recording, classification before classifying, notifications before processing the inbox and statements before submitting a statement.",
 		readOnly:    true,
 		idempotent:  true,
 		enums:       map[string][]any{"topic": names},

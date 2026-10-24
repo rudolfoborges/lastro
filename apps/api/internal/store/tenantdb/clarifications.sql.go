@@ -16,7 +16,7 @@ const closeClarification = `-- name: CloseClarification :one
 UPDATE clarifications
 SET status = $1, resolution = $2, resolved_by = $3, resolved_at = now(), updated_at = now()
 WHERE account_id = $4 AND id = $5 AND status = 'open'
-RETURNING id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at
+RETURNING id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
 `
 
 type CloseClarificationParams struct {
@@ -52,12 +52,13 @@ func (q *Queries) CloseClarification(ctx context.Context, arg CloseClarification
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatementID,
 	)
 	return i, err
 }
 
 const getOpenClarificationByDedupKey = `-- name: GetOpenClarificationByDedupKey :one
-SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at
+SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
 FROM clarifications
 WHERE account_id = $1 AND dedup_key = $2 AND status = 'open'
 `
@@ -86,13 +87,14 @@ func (q *Queries) GetOpenClarificationByDedupKey(ctx context.Context, arg GetOpe
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatementID,
 	)
 	return i, err
 }
 
 const insertClarification = `-- name: InsertClarification :exec
-INSERT INTO clarifications (id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open')
+INSERT INTO clarifications (id, account_id, kind, transaction_id, observation_id, statement_id, subject, dedup_key, question, context, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
 ON CONFLICT (account_id, dedup_key) WHERE status = 'open' DO NOTHING
 `
 
@@ -102,6 +104,7 @@ type InsertClarificationParams struct {
 	Kind          string
 	TransactionID *uuid.UUID
 	ObservationID *uuid.UUID
+	StatementID   *uuid.UUID
 	Subject       string
 	DedupKey      string
 	Question      string
@@ -115,6 +118,7 @@ func (q *Queries) InsertClarification(ctx context.Context, arg InsertClarificati
 		arg.Kind,
 		arg.TransactionID,
 		arg.ObservationID,
+		arg.StatementID,
 		arg.Subject,
 		arg.DedupKey,
 		arg.Question,
@@ -124,7 +128,7 @@ func (q *Queries) InsertClarification(ctx context.Context, arg InsertClarificati
 }
 
 const listClarifications = `-- name: ListClarifications :many
-SELECT c.id, c.account_id, c.kind, c.transaction_id, c.observation_id, c.subject, c.dedup_key, c.question, c.context, c.status, c.resolution, c.resolved_by, c.resolved_at, c.created_at, c.updated_at
+SELECT c.id, c.account_id, c.kind, c.transaction_id, c.observation_id, c.subject, c.dedup_key, c.question, c.context, c.status, c.resolution, c.resolved_by, c.resolved_at, c.created_at, c.updated_at, c.statement_id
 FROM clarifications c
 LEFT JOIN transactions t ON t.account_id = c.account_id AND t.id = c.transaction_id
 WHERE c.account_id = $1
@@ -177,6 +181,7 @@ func (q *Queries) ListClarifications(ctx context.Context, arg ListClarifications
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StatementID,
 		); err != nil {
 			return nil, err
 		}
@@ -189,7 +194,7 @@ func (q *Queries) ListClarifications(ctx context.Context, arg ListClarifications
 }
 
 const lockClarification = `-- name: LockClarification :one
-SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at
+SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
 FROM clarifications
 WHERE account_id = $1 AND id = $2
 FOR UPDATE
@@ -219,12 +224,62 @@ func (q *Queries) LockClarification(ctx context.Context, arg LockClarificationPa
 		&i.ResolvedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatementID,
 	)
 	return i, err
 }
 
+const openStatementClarifications = `-- name: OpenStatementClarifications :many
+SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
+FROM clarifications
+WHERE account_id = $1 AND statement_id = $2 AND status = 'open'
+ORDER BY created_at, id
+`
+
+type OpenStatementClarificationsParams struct {
+	AccountID   uuid.UUID
+	StatementID *uuid.UUID
+}
+
+func (q *Queries) OpenStatementClarifications(ctx context.Context, arg OpenStatementClarificationsParams) ([]Clarification, error) {
+	rows, err := q.db.Query(ctx, openStatementClarifications, arg.AccountID, arg.StatementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Clarification{}
+	for rows.Next() {
+		var i Clarification
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Kind,
+			&i.TransactionID,
+			&i.ObservationID,
+			&i.Subject,
+			&i.DedupKey,
+			&i.Question,
+			&i.Context,
+			&i.Status,
+			&i.Resolution,
+			&i.ResolvedBy,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StatementID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const openTransactionClarifications = `-- name: OpenTransactionClarifications :many
-SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at
+SELECT id, account_id, kind, transaction_id, observation_id, subject, dedup_key, question, context, status, resolution, resolved_by, resolved_at, created_at, updated_at, statement_id
 FROM clarifications
 WHERE account_id = $1 AND transaction_id = $2 AND status = 'open'
 ORDER BY created_at, id
@@ -260,6 +315,7 @@ func (q *Queries) OpenTransactionClarifications(ctx context.Context, arg OpenTra
 			&i.ResolvedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StatementID,
 		); err != nil {
 			return nil, err
 		}

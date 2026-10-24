@@ -1,0 +1,395 @@
+package mcpserver
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/calendar"
+	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
+	"github.com/rudolfoborges/lastro/apps/api/internal/money"
+)
+
+type StatementComponentInput struct {
+	Kind     string `json:"kind" jsonschema:"principal, interest, iof or fee"`
+	Amount   string `json:"amount" jsonschema:"canonical decimal in the statement currency"`
+	Included bool   `json:"included" jsonschema:"true when this amount is part of the item amount; false when it is charged apart in another line"`
+}
+
+type StatementItemInput struct {
+	Kind                 string                    `json:"kind" jsonschema:"what the line is; previous balance goes in previous_balance, not here"`
+	OriginalDescription  string                    `json:"original_description" jsonschema:"the description exactly as printed on the line"`
+	Description          string                    `json:"description,omitempty" jsonschema:"short readable description in Portuguese; the original description when omitted"`
+	Merchant             string                    `json:"merchant,omitempty" jsonschema:"store or payee, only when the line shows it"`
+	Amount               string                    `json:"amount" jsonschema:"amount of the line in the statement currency, as a positive canonical decimal such as 32.97; kind says whether it adds or subtracts"`
+	Direction            string                    `json:"direction,omitempty" jsonschema:"only for adjustment and unknown: debit when the line adds to the total, credit when it subtracts"`
+	OriginalAmount       string                    `json:"original_amount,omitempty" jsonschema:"amount in the foreign currency, for international lines"`
+	OriginalCurrency     string                    `json:"original_currency,omitempty" jsonschema:"ISO 4217 code of original_amount"`
+	Date                 string                    `json:"date,omitempty" jsonschema:"date printed on the line, YYYY-MM-DD; take the year from the statement cycle"`
+	InstallmentNumber    int                       `json:"installment_number,omitempty" jsonschema:"n of n/N; required for installment and pix_installment"`
+	InstallmentCount     int                       `json:"installment_count,omitempty" jsonschema:"N of n/N"`
+	CardLast4            string                    `json:"card_last4,omitempty" jsonschema:"last 4 digits of the card of this line when it is not the holder's (additional or virtual card)"`
+	Page                 int                       `json:"page" jsonschema:"page of the PDF where the line is printed, starting at 1"`
+	Excerpt              string                    `json:"excerpt" jsonschema:"the text of the line exactly as printed, so Rudolfo can find it in his PDF"`
+	Components           []StatementComponentInput `json:"components,omitempty" jsonschema:"principal, interest, IOF and fee of the line, only when the statement details them"`
+	Category             string                    `json:"category,omitempty" jsonschema:"suggested category code from list_categories"`
+	Purpose              string                    `json:"purpose,omitempty" jsonschema:"only when Rudolfo told you why"`
+	RelatedTransactionID string                    `json:"related_transaction_id,omitempty" jsonschema:"existing transaction that is this same charge (from the conversation or a notification)"`
+	RefundOfID           string                    `json:"refund_of_id,omitempty" jsonschema:"for refund: the purchase it returns money from"`
+	ConfirmDistinct      bool                      `json:"confirm_distinct,omitempty" jsonschema:"true when a possible_match candidate is a different purchase"`
+	Question             string                    `json:"question,omitempty" jsonschema:"for unknown: what to ask Rudolfo, in Portuguese"`
+}
+
+type ReadingDoubtInput struct {
+	Page     int    `json:"page" jsonschema:"page of the PDF, starting at 1"`
+	Excerpt  string `json:"excerpt" jsonschema:"the text you could not read safely, as printed"`
+	Question string `json:"question" jsonschema:"what to ask Rudolfo, in Portuguese"`
+}
+
+type SubmitStatementExtractionInput struct {
+	Issuer          string               `json:"issuer" jsonschema:"card issuer as printed, such as the bank name"`
+	CardLast4       string               `json:"card_last4" jsonschema:"last 4 digits of the holder's card"`
+	ClosingDate     string               `json:"closing_date" jsonschema:"closing date printed on the statement, YYYY-MM-DD"`
+	DueDate         string               `json:"due_date" jsonschema:"due date printed on the statement, YYYY-MM-DD"`
+	IssueDate       string               `json:"issue_date,omitempty" jsonschema:"issue date, when printed"`
+	PeriodStart     string               `json:"period_start,omitempty" jsonschema:"first day of the cycle, when printed"`
+	PeriodEnd       string               `json:"period_end,omitempty" jsonschema:"last day of the cycle, when printed"`
+	Currency        string               `json:"currency,omitempty" jsonschema:"ISO 4217 code of the statement, BRL when omitted"`
+	Total           string               `json:"total" jsonschema:"total of this statement as printed, canonical decimal; negative only for a credit balance"`
+	PreviousBalance string               `json:"previous_balance,omitempty" jsonschema:"total of the previous statement as printed in the summary, when shown"`
+	Reading         string               `json:"reading" jsonschema:"complete when you read every line of every page; partial otherwise"`
+	Missing         string               `json:"missing,omitempty" jsonschema:"for a partial reading: what you could not read, in Portuguese"`
+	PageCount       int                  `json:"page_count,omitempty" jsonschema:"number of pages of the PDF"`
+	FileSHA256      string               `json:"file_sha256,omitempty" jsonschema:"SHA-256 of the PDF in hexadecimal, only if you can compute it"`
+	Items           []StatementItemInput `json:"items" jsonschema:"every line of the statement, in the order printed"`
+	ReadingDoubts   []ReadingDoubtInput  `json:"reading_doubts,omitempty" jsonschema:"passages you could not interpret safely"`
+}
+
+type StatementOutput struct {
+	ID              string       `json:"id"`
+	Issuer          string       `json:"issuer"`
+	CardLast4       string       `json:"card_last4"`
+	ClosingDate     string       `json:"closing_date"`
+	DueDate         string       `json:"due_date"`
+	Version         int          `json:"version" jsonschema:"1 for the first reading of this statement"`
+	Total           MoneyOutput  `json:"total" jsonschema:"total printed on the statement"`
+	PreviousBalance *MoneyOutput `json:"previous_balance,omitempty"`
+	Reading         string       `json:"reading"`
+	Missing         *string      `json:"missing,omitempty"`
+}
+
+type StatementLineOutput struct {
+	Index         int         `json:"index" jsonschema:"position of the item in items, starting at 0"`
+	Kind          string      `json:"kind"`
+	Amount        MoneyOutput `json:"amount"`
+	Page          int         `json:"page"`
+	Effect        string      `json:"effect" jsonschema:"created (new transaction), linked (confirmed an existing one) or none (kept only in the statement)"`
+	TransactionID *string     `json:"transaction_id,omitempty"`
+	Description   *string     `json:"description,omitempty"`
+	Status        *string     `json:"status,omitempty"`
+	Category      *string     `json:"category,omitempty" jsonschema:"category code of the transaction"`
+	Changed       []string    `json:"changed,omitempty" jsonschema:"fields of the existing transaction filled or corrected by the statement"`
+	Conflicts     []string    `json:"conflicts,omitempty" jsonschema:"fields Rudolfo confirmed that the statement contradicts; a clarification was opened"`
+}
+
+type ItemCandidatesOutput struct {
+	Index      int                    `json:"index" jsonschema:"position of the item in items, starting at 0"`
+	Candidates []MatchCandidateOutput `json:"candidates"`
+}
+
+type SubmitStatementExtractionOutput struct {
+	Outcome        Outcome                `json:"outcome"`
+	Result         string                 `json:"result" jsonschema:"recorded, already_recorded or possible_match"`
+	Statement      *StatementOutput       `json:"statement,omitempty"`
+	Lines          []StatementLineOutput  `json:"lines,omitempty"`
+	Candidates     []ItemCandidatesOutput `json:"candidates,omitempty" jsonschema:"for possible_match: existing transactions that may be the same charge as an item"`
+	Clarifications []ClarificationOutput  `json:"clarifications,omitempty" jsonschema:"open questions about this statement"`
+	Summary        string                 `json:"summary"`
+}
+
+func (o SubmitStatementExtractionOutput) reportedOutcome() Outcome {
+	return o.Outcome
+}
+
+func (s *Server) registerStatements() {
+	addTool(s, toolSpec{
+		name:  "submit_statement_extraction",
+		title: "Submit your reading of a credit card statement",
+		description: "Records the statement PDF Rudolfo sent you, as you read it: identity (issuer, card, closing date), dates, the printed total and every line with its page and excerpt. " +
+			"Lastro never sees the PDF. The reading is accepted whole or rejected whole; resending the same reading changes nothing. Read get_instructions topic statements first.",
+		scope:      accounts.ScopeStatementsWrite,
+		idempotent: true,
+		enums: map[string][]any{
+			"reading":                 enumValues([]ledger.Reading{ledger.ReadingComplete, ledger.ReadingPartial}),
+			"items.kind":              enumValues(ledger.StatementItemKinds),
+			"items.direction":         enumValues([]ledger.Direction{ledger.DirectionDebit, ledger.DirectionCredit}),
+			"items.components.kind":   enumValues(ledger.ComponentKinds),
+			"items.original_currency": stringValues(money.SupportedCurrencies()),
+			"currency":                stringValues(money.SupportedCurrencies()),
+		},
+	}, func(ctx context.Context, c call, in SubmitStatementExtractionInput) (SubmitStatementExtractionOutput, error) {
+		extraction, err := statementExtraction(in)
+		if err != nil {
+			return SubmitStatementExtractionOutput{}, err
+		}
+		submission, err := s.deps.Ledger.SubmitStatement(ctx, c.principal.AccountID, extraction, c.receivedAt, c.actor(ledger.AuthorAgent, ""))
+		if errors.Is(err, ledger.ErrStatementVersionUnsupported) {
+			return SubmitStatementExtractionOutput{}, &ToolError{Outcome: OutcomeFailed, Code: "statement_version_not_supported", Message: err.Error()}
+		}
+		if err != nil {
+			return SubmitStatementExtractionOutput{}, err
+		}
+		return statementSubmissionOutput(submission), nil
+	})
+}
+
+func stringValues(values []string) []any {
+	out := make([]any, len(values))
+	for i, v := range values {
+		out[i] = v
+	}
+	return out
+}
+
+func statementExtraction(in SubmitStatementExtractionInput) (ledger.StatementExtraction, error) {
+	currency := strings.TrimSpace(in.Currency)
+	if currency == "" {
+		currency = defaultCurrency
+	}
+	out := ledger.StatementExtraction{
+		Issuer:    in.Issuer,
+		CardLast4: in.CardLast4,
+		Reading:   ledger.Reading(strings.TrimSpace(in.Reading)),
+		Missing:   in.Missing,
+	}
+	var err error
+	if out.ClosingDate, err = requiredDate("closing_date", in.ClosingDate); err != nil {
+		return out, err
+	}
+	if out.DueDate, err = requiredDate("due_date", in.DueDate); err != nil {
+		return out, err
+	}
+	if out.IssueDate, err = parseOptionalDate("issue_date", in.IssueDate); err != nil {
+		return out, err
+	}
+	if out.PeriodStart, err = parseOptionalDate("period_start", in.PeriodStart); err != nil {
+		return out, err
+	}
+	if out.PeriodEnd, err = parseOptionalDate("period_end", in.PeriodEnd); err != nil {
+		return out, err
+	}
+	if out.Total, err = parseMoney("total", in.Total, currency); err != nil {
+		return out, err
+	}
+	if strings.TrimSpace(in.PreviousBalance) != "" {
+		balance, err := parseMoney("previous_balance", in.PreviousBalance, currency)
+		if err != nil {
+			return out, err
+		}
+		out.PreviousBalance = &balance
+	}
+	if in.PageCount != 0 {
+		out.PageCount = &in.PageCount
+	}
+	if hash := strings.TrimSpace(in.FileSHA256); hash != "" {
+		if out.FileSHA256, err = hex.DecodeString(strings.ToLower(hash)); err != nil {
+			return out, invalid("file_sha256", "must be the SHA-256 of the PDF in hexadecimal")
+		}
+	}
+	out.Items = make([]ledger.StatementItem, len(in.Items))
+	for i, item := range in.Items {
+		if out.Items[i], err = statementItem(item, currency); err != nil {
+			var toolErr *ToolError
+			if errors.As(err, &toolErr) {
+				toolErr.Field = fmt.Sprintf("items[%d].%s", i, toolErr.Field)
+			}
+			return out, err
+		}
+	}
+	out.Doubts = make([]ledger.ReadingDoubt, len(in.ReadingDoubts))
+	for i, doubt := range in.ReadingDoubts {
+		out.Doubts[i] = ledger.ReadingDoubt{Page: doubt.Page, Excerpt: doubt.Excerpt, Question: doubt.Question}
+	}
+	return out, nil
+}
+
+func statementItem(in StatementItemInput, currency string) (ledger.StatementItem, error) {
+	item := ledger.StatementItem{
+		Kind:                ledger.StatementItemKind(strings.TrimSpace(in.Kind)),
+		Direction:           ledger.Direction(strings.TrimSpace(in.Direction)),
+		OriginalDescription: in.OriginalDescription,
+		Description:         in.Description,
+		Merchant:            optionalString(in.Merchant),
+		CardLast4:           optionalString(in.CardLast4),
+		Page:                in.Page,
+		Excerpt:             in.Excerpt,
+		Category:            optionalString(in.Category),
+		Purpose:             optionalString(in.Purpose),
+		ConfirmDistinct:     in.ConfirmDistinct,
+		Question:            in.Question,
+	}
+	var err error
+	if item.Amount, err = parseMoney("amount", in.Amount, currency); err != nil {
+		return item, err
+	}
+	switch original, code := strings.TrimSpace(in.OriginalAmount), strings.TrimSpace(in.OriginalCurrency); {
+	case original != "" && code != "":
+		amount, err := parseMoney("original_amount", original, code)
+		if err != nil {
+			return item, err
+		}
+		item.OriginalAmount = &amount
+	case original != "" || code != "":
+		return item, invalid("original_amount", "and original_currency go together")
+	}
+	if item.Date, err = parseOptionalDate("date", in.Date); err != nil {
+		return item, err
+	}
+	if in.InstallmentNumber != 0 || in.InstallmentCount != 0 {
+		item.Installment = &ledger.InstallmentPosition{Number: in.InstallmentNumber, Count: in.InstallmentCount}
+	}
+	for i, component := range in.Components {
+		amount, err := parseMoney(fmt.Sprintf("components[%d].amount", i), component.Amount, currency)
+		if err != nil {
+			return item, err
+		}
+		item.Components = append(item.Components, ledger.ChargeComponent{Kind: ledger.ComponentKind(strings.TrimSpace(component.Kind)), Amount: amount, Included: component.Included})
+	}
+	if item.RelatedTransactionID, err = optionalID("related_transaction_id", in.RelatedTransactionID); err != nil {
+		return item, err
+	}
+	if item.RefundOfID, err = optionalID("refund_of_id", in.RefundOfID); err != nil {
+		return item, err
+	}
+	return item, nil
+}
+
+func requiredDate(field, value string) (calendar.Date, error) {
+	date, err := parseOptionalDate(field, value)
+	if err != nil {
+		return calendar.Date{}, err
+	}
+	if date == nil {
+		return calendar.Date{}, invalid(field, "is required; read it from the statement")
+	}
+	return *date, nil
+}
+
+func parseMoney(field, value, currency string) (money.Money, error) {
+	amount, err := money.Parse(strings.TrimSpace(value), currency)
+	switch {
+	case errors.Is(err, money.ErrUnsupportedCurrency):
+		return money.Money{}, invalid(strings.Replace(field, "amount", "currency", 1), err.Error())
+	case err != nil:
+		return money.Money{}, invalid(field, err.Error())
+	}
+	return amount, nil
+}
+
+func optionalID(field, value string) (*uuid.UUID, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	id, err := parseID(field, value)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func statementSubmissionOutput(submission ledger.StatementSubmission) SubmitStatementExtractionOutput {
+	out := SubmitStatementExtractionOutput{Outcome: OutcomeCompleted, Result: string(submission.Result)}
+	if submission.Statement != nil {
+		out.Statement = statementOutput(*submission.Statement)
+	}
+	for _, line := range submission.Lines {
+		out.Lines = append(out.Lines, statementLineOutput(line))
+	}
+	for _, item := range submission.Candidates {
+		candidates := ItemCandidatesOutput{Index: item.Position - 1}
+		for _, candidate := range item.Candidates {
+			candidates.Candidates = append(candidates.Candidates, MatchCandidateOutput{Transaction: transactionOutput(candidate.Transaction, &candidate.Category), Reasons: candidate.Reasons})
+		}
+		out.Candidates = append(out.Candidates, candidates)
+	}
+	for _, clarification := range submission.Clarifications {
+		out.Clarifications = append(out.Clarifications, clarificationOutput(clarification))
+	}
+	if submission.Result == ledger.StatementPossibleMatch {
+		out.Outcome = OutcomePending
+	}
+	out.Summary = statementSummary(submission)
+	return out
+}
+
+func statementOutput(statement ledger.Statement) *StatementOutput {
+	out := &StatementOutput{
+		ID:          statement.ID.String(),
+		Issuer:      statement.Issuer,
+		CardLast4:   statement.CardLast4,
+		ClosingDate: statement.ClosingDate.String(),
+		DueDate:     statement.Version.DueDate.String(),
+		Version:     statement.Version.Number,
+		Total:       moneyOutput(statement.Version.Total),
+		Reading:     string(statement.Version.Reading),
+		Missing:     statement.Version.Missing,
+	}
+	if balance := statement.Version.PreviousBalance; balance != nil {
+		previous := moneyOutput(*balance)
+		out.PreviousBalance = &previous
+	}
+	return out
+}
+
+func statementLineOutput(line ledger.StatementLine) StatementLineOutput {
+	out := StatementLineOutput{
+		Index:  line.Position - 1,
+		Kind:   string(line.Kind),
+		Amount: moneyOutput(line.Amount),
+		Page:   line.Page,
+		Effect: string(line.Effect),
+	}
+	if tr := line.Transaction; tr != nil {
+		id, status := tr.ID.String(), string(tr.Status)
+		out.TransactionID, out.Description, out.Status = &id, &tr.Description, &status
+		if line.Category.Status != ledger.AllocationMissing {
+			out.Category = &line.Category.Code
+		}
+	}
+	for _, field := range line.Changed {
+		out.Changed = append(out.Changed, string(field))
+	}
+	for _, conflict := range line.Conflicts {
+		out.Conflicts = append(out.Conflicts, string(conflict.Field))
+	}
+	return out
+}
+
+func statementSummary(submission ledger.StatementSubmission) string {
+	switch submission.Result {
+	case ledger.StatementPossibleMatch:
+		return fmt.Sprintf("Nada foi registrado: %d item(ns) podem ser cobranças já registradas pela conversa ou por notificação. Para cada um, envie de novo a leitura inteira com related_transaction_id (mesma compra) ou confirm_distinct (outra compra); pergunte a Rudolfo se não tiver certeza.", len(submission.Candidates))
+	case ledger.StatementAlreadyRecorded:
+		return "Esta leitura da fatura já estava registrada; nada mudou."
+	}
+	statement := submission.Statement
+	counts := map[ledger.InterpretationEffect]int{}
+	for _, line := range submission.Lines {
+		counts[line.Effect]++
+	}
+	summary := fmt.Sprintf("Registrei a fatura %s final %s (fechamento %s, vencimento %s, total %s): %d itens, %d lançamento(s) novo(s), %d conferido(s) com registros existentes e %d só na fatura.",
+		statement.Issuer, statement.CardLast4, statement.ClosingDate.Format(), statement.Version.DueDate.Format(), statement.Version.Total.Format(),
+		len(submission.Lines), counts[ledger.EffectCreated], counts[ledger.EffectLinked], counts[ledger.EffectNone])
+	if statement.Version.Reading == ledger.ReadingPartial {
+		summary += " A leitura está incompleta: " + *statement.Version.Missing
+	}
+	if len(submission.Clarifications) > 0 {
+		summary += fmt.Sprintf(" Há %d dúvida(s) de leitura para Rudolfo.", len(submission.Clarifications))
+	}
+	return summary
+}
