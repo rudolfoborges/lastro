@@ -200,6 +200,12 @@ Every account starts with the categories of the PRD (`internal/taxonomy`); codes
 
 Each transaction has **one category**, stored in `category_allocations` as a single current row covering the whole amount. It is `suggested` (by Case, origin `agent`, or by a rule, origin `rule`) or `confirmed` (only by Rudolfo, origin `user`). Changing it supersedes the old row, which stays for history, and writes a `category` revision. The database keeps at most one current category per transaction (`category_allocations_one_current_idx`), and deferred constraint triggers refuse at commit a category whose amount differs from the transaction's. Confirmed categories are locked against Case and rules: a different suggestion comes back as a conflict. When the amount is corrected, the category follows it. A transaction without a category counts in full as "Não identificado" (`EffectiveCategory`). Splitting a purchase between categories was left out of the first delivery (#83, D8).
 
+### Classification rules
+
+`classification_rules` (#43) holds the rules Rudolfo asked for: a store (`merchant_key` folds case, accents and punctuation, one active rule per store), a category, an optional purpose and his words (`instruction`). They are created only by `create_classification_rule`; no correction or classification ever creates one, and they never change past purchases.
+
+The server does not apply them. Case lists them and sends the rule with the category it decided (`category_rule_id` on `record_expense`, notification interpretations and statement items; `rule_id` on `set_category`). Lastro checks that the rule is active and takes its category, which is stored as `suggested` with origin `rule` and the instruction as the reason. A confirmed category is never replaced by a rule (criterion 13): the attempt becomes a `field_conflict` question.
+
 ### Recording from the conversation
 
 `record_expense` (`ledger.Service.RecordExpense`) turns what Case understood into an observation `conversation` (raw text and Case's reading, redacted), its interpretation, a transaction with the conversation as confirmed evidence, the category Case gave and the questions that remain, all in one transaction:
@@ -455,7 +461,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
 | `update_transaction` | `expenses:write` | Corrects description, merchant, payee, amount, date, payment method, nature, purpose, installments or the purchase a refund belongs to, with a reason |
-| `set_category` | `expenses:write` | Sets the transaction's category (confirmed by Rudolfo, or suggested by Case) |
+| `set_category` | `expenses:write` | Sets the transaction's category (confirmed by Rudolfo, suggested by Case, or by one of Rudolfo's rules with `rule_id`) |
 | `void_transaction` | `expenses:write` | Marks a record made by mistake as voided; nothing is deleted |
 | `get_transaction` | `expenses:read` | Transaction with categories, evidence, full history and open questions |
 | `list_transactions` | `expenses:read` | Lists by purchase period, status, category and payment method, without totals |
@@ -468,6 +474,9 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line; `dry_run` reviews without recording |
 | `get_statement_review` | `expenses:read` | Composition, computed versus printed total, status and pending items of a statement |
 | `get_statement_line_source` | `expenses:read` | Page and excerpt of a statement line, by transaction or by statement and index |
+| `create_classification_rule` | `expenses:write` | Saves a rule Rudolfo asked for (store → category, purpose), never from a one-off correction |
+| `list_classification_rules` | `expenses:read` | Rudolfo's active (or archived) rules, for Case to apply |
+| `archive_classification_rule` | `expenses:write` | Stops a rule; categories it decided stay |
 | `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
 | `confirm_match` | `expenses:write` | Merges two open transactions of the same purchase; the other one is kept as `merged` |
 | `reject_match` | `expenses:write` | Records that two transactions are different purchases, so they are never offered again |

@@ -64,6 +64,7 @@ type ExpenseReport struct {
 	CategoryStatus       AllocationStatus
 	Purpose              *string
 	Installments         *Installments
+	CategoryRuleID       *uuid.UUID
 	Nature               Nature
 	RefundOfID           *uuid.UUID
 	RelatedTransactionID *uuid.UUID
@@ -137,6 +138,13 @@ func (s *Service) RecordExpense(ctx context.Context, accountID uuid.UUID, report
 }
 
 func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor) (recordedExpense, error) {
+	rule, err := t.applyRule(report.CategoryRuleID, &report.Category, "category_rule_id")
+	if err != nil {
+		return recordedExpense{}, err
+	}
+	if rule != nil && report.CategoryStatus == "" {
+		report.CategoryStatus = AllocationSuggested
+	}
 	occurred, err := occurrenceOf(report, loc)
 	if err != nil {
 		return recordedExpense{}, err
@@ -210,7 +218,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 	}
 
 	if report.RelatedTransactionID != nil {
-		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, loc, actor)
+		return t.linkReport(*report.RelatedTransactionID, observation.ID, report, occurred, loc, actor, rule)
 	}
 	var purchase *Transaction
 	if report.RefundOfID != nil {
@@ -255,7 +263,7 @@ func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor
 			report.Category, report.CategoryStatus = &current.Code, AllocationSuggested
 		}
 	}
-	if err := t.categorizeReport(created, report, actor, false); err != nil {
+	if err := t.categorizeReport(created, report, actor, rule, false); err != nil {
 		return recordedExpense{}, err
 	}
 	if err := t.syncPlan(created, calendar.DateOf(report.messageAt(), loc), report.Installments != nil && report.Installments.Amount != nil); err != nil {
@@ -319,7 +327,7 @@ func conversationProbe(report ExpenseReport, occurred calendar.Occurrence, loc *
 	return probe
 }
 
-func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseReport, occurred calendar.Occurrence, loc *time.Location, actor Actor) (recordedExpense, error) {
+func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseReport, occurred calendar.Occurrence, loc *time.Location, actor Actor, rule *ClassificationRule) (recordedExpense, error) {
 	current, err := t.lockOpenTransaction(transactionID)
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -348,7 +356,7 @@ func (t *tx) linkReport(transactionID, observationID uuid.UUID, report ExpenseRe
 			return recordedExpense{}, err
 		}
 	}
-	if err := t.categorizeReport(correction.Transaction, report, actor, true); err != nil {
+	if err := t.categorizeReport(correction.Transaction, report, actor, rule, true); err != nil {
 		return recordedExpense{}, err
 	}
 	if err := t.refreshClarifications(transactionID); err != nil {
@@ -380,11 +388,11 @@ func conversationGapPatch(current Transaction, report ExpenseReport, occurred ca
 	return patch
 }
 
-func (t *tx) categorizeReport(transaction Transaction, report ExpenseReport, actor Actor, onlyWhenMissing bool) error {
+func (t *tx) categorizeReport(transaction Transaction, report ExpenseReport, actor Actor, rule *ClassificationRule, onlyWhenMissing bool) error {
 	if report.Category == nil {
 		return nil
 	}
-	categorizer, reason := actor, "Classificado pela Case."
+	categorizer, reason := classifierOf(actor, rule)
 	if report.CategoryStatus == AllocationConfirmed {
 		categorizer.Author, reason = AuthorUser, "Categoria informada por Rudolfo."
 	} else if onlyWhenMissing {

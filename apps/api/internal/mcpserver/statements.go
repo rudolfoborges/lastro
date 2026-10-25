@@ -44,6 +44,7 @@ type StatementItemInput struct {
 	Components           []StatementComponentInput `json:"components,omitempty" jsonschema:"principal, interest, IOF and fee of the line, only when the statement details them"`
 	FutureInstallments   []FutureInstallmentInput  `json:"future_installments,omitempty" jsonschema:"only when the statement prints the next installments of this same purchase; never project them yourself"`
 	Category             string                    `json:"category,omitempty" jsonschema:"suggested category code from list_categories"`
+	CategoryRuleID       string                    `json:"category_rule_id,omitempty" jsonschema:"Rudolfo's classification rule that decided the category, from list_classification_rules; the category is the rule's"`
 	Purpose              string                    `json:"purpose,omitempty" jsonschema:"only when Rudolfo told you why"`
 	RelatedTransactionID string                    `json:"related_transaction_id,omitempty" jsonschema:"existing transaction that is this same charge (from the conversation or a notification)"`
 	RefundOfID           string                    `json:"refund_of_id,omitempty" jsonschema:"for refund: the purchase it returns money from"`
@@ -538,6 +539,9 @@ func statementItem(in StatementItemInput, currency string) (ledger.StatementItem
 			return item, err
 		}
 		item.FutureInstallments = append(item.FutureInstallments, ledger.FutureInstallment{Number: future.Number, Amount: amount})
+	}
+	if item.CategoryRuleID, err = optionalID("category_rule_id", in.CategoryRuleID); err != nil {
+		return item, err
 	}
 	if item.RelatedTransactionID, err = optionalID("related_transaction_id", in.RelatedTransactionID); err != nil {
 		return item, err

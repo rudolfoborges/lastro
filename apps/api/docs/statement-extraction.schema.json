@@ -69,6 +69,10 @@
             "description": "suggested category code from list_categories",
             "type": "string"
           },
+          "category_rule_id": {
+            "description": "Rudolfo's classification rule that decided the category, from list_classification_rules; the category is the rule's",
+            "type": "string"
+          },
           "components": {
             "description": "principal, interest, IOF and fee of the line, only when the statement details them",
             "items": {

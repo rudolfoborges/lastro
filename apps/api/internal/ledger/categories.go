@@ -133,6 +133,32 @@ func (s *Service) Categorize(ctx context.Context, accountID, transactionID uuid.
 	return result, err
 }
 
+func (s *Service) CategorizeByRule(ctx context.Context, accountID, transactionID, ruleID uuid.UUID, actor Actor) (Categorization, error) {
+	var result Categorization
+	err := s.inTx(ctx, accountID, func(t *tx) error {
+		var err error
+		result, err = once(t, "set_category", actor, []any{transactionID, ruleID}, func() (Categorization, error) {
+			var code *string
+			rule, err := t.applyRule(&ruleID, &code, "rule_id")
+			if err != nil {
+				return Categorization{}, err
+			}
+			transaction, err := t.lockOpenTransaction(transactionID)
+			if err != nil {
+				return Categorization{}, err
+			}
+			classifier, reason := classifierOf(actor, rule)
+			result, err := t.categorize(transaction, *code, AllocationSuggested, reason, classifier)
+			if err != nil {
+				return Categorization{}, err
+			}
+			return result, t.refreshClarifications(transactionID)
+		})
+		return err
+	})
+	return result, err
+}
+
 func (s *Service) CategoryOf(ctx context.Context, accountID, transactionID uuid.UUID) (Allocation, error) {
 	var allocation Allocation
 	err := s.inTx(ctx, accountID, func(t *tx) error {

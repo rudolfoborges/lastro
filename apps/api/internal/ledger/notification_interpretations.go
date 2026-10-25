@@ -44,6 +44,7 @@ type NotificationInterpretation struct {
 	PaymentMethod        *PaymentMethodRef
 	OccurredAt           *time.Time
 	Category             *string
+	CategoryRuleID       *uuid.UUID
 	Purpose              *string
 	RelatedTransactionID *uuid.UUID
 	ConfirmDistinct      bool
@@ -75,6 +76,7 @@ type InterpretationOutcome struct {
 }
 
 type interpreter struct {
+	rule    *ClassificationRule
 	t       *tx
 	in      NotificationInterpretation
 	version tenantdb.LockNotificationVersionRow
@@ -121,6 +123,11 @@ func (s *Service) InterpretNotification(ctx context.Context, accountID uuid.UUID
 
 func (a *interpreter) run() (InterpretationOutcome, error) {
 	hash := a.in.submissionHash()
+	rule, err := a.t.applyRule(a.in.CategoryRuleID, &a.in.Category, "category_rule_id")
+	if err != nil {
+		return InterpretationOutcome{}, err
+	}
+	a.rule = rule
 	latest, err := a.latest()
 	if err != nil {
 		return InterpretationOutcome{}, err
@@ -519,7 +526,8 @@ func (a *interpreter) classify(transaction Transaction, onlyWhenMissing bool) er
 			return err
 		}
 	}
-	if _, err := a.t.categorize(transaction, *a.in.Category, AllocationSuggested, reasonClassified, a.actor); err != nil {
+	classifier, reason := classifierOf(a.actor, a.rule)
+	if _, err := a.t.categorize(transaction, *a.in.Category, AllocationSuggested, reason, classifier); err != nil {
 		return err
 	}
 	return a.t.refreshClarifications(transaction.ID)

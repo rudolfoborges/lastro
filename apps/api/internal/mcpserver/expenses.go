@@ -29,6 +29,7 @@ type RecordExpenseInput struct {
 	PaymentMethod        string `json:"payment_method,omitempty" jsonschema:"credit_card, debit_card, pix or cash; omit when unknown"`
 	CardLast4            string `json:"card_last4,omitempty" jsonschema:"last 4 digits of the card, only when Rudolfo said them"`
 	Category             string `json:"category,omitempty" jsonschema:"category code from list_categories"`
+	CategoryRuleID       string `json:"category_rule_id,omitempty" jsonschema:"Rudolfo's classification rule that decided the category, from list_classification_rules; the category is the rule's"`
 	CategoryStatus       string `json:"category_status,omitempty" jsonschema:"suggested (default) when you classified; confirmed only when Rudolfo said the category"`
 	Purpose              string `json:"purpose,omitempty" jsonschema:"why the money was spent, only when Rudolfo said it"`
 	InstallmentCount     int    `json:"installment_count,omitempty" jsonschema:"number of installments, from 2 to 120"`
@@ -145,6 +146,9 @@ func expenseReport(c call, in RecordExpenseInput) (ledger.ExpenseReport, error) 
 	if in.Category != "" {
 		report.Category = optionalString(in.Category)
 		report.CategoryStatus = ledger.AllocationStatus(in.CategoryStatus)
+	}
+	if report.CategoryRuleID, err = optionalID("category_rule_id", in.CategoryRuleID); err != nil {
+		return report, err
 	}
 	if in.InstallmentCount != 0 || strings.TrimSpace(in.InstallmentAmount) != "" {
 		installments := &ledger.Installments{Count: in.InstallmentCount}

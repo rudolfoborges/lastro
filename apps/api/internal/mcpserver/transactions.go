@@ -55,7 +55,8 @@ func (o CorrectionOutput) reportedOutcome() Outcome {
 type SetCategoryInput struct {
 	TransactionID  string `json:"transaction_id"`
 	RequestID      string `json:"request_id" jsonschema:"generated once for this classification and reused on every retry"`
-	Category       string `json:"category" jsonschema:"category code from list_categories"`
+	Category       string `json:"category,omitempty" jsonschema:"category code from list_categories; leave it out with rule_id"`
+	RuleID         string `json:"rule_id,omitempty" jsonschema:"Rudolfo's classification rule to apply, from list_classification_rules; the category is the rule's, suggested with origin rule"`
 	CategoryStatus string `json:"category_status,omitempty" jsonschema:"confirmed (default) when Rudolfo said it; suggested when you classified"`
 	Reason         string `json:"reason,omitempty" jsonschema:"kept in the history"`
 }
@@ -197,7 +198,7 @@ func (s *Server) registerTransactions() {
 	addTool(s, toolSpec{
 		name:        "set_category",
 		title:       "Classify a transaction",
-		description: "Sets the category of a transaction. Each transaction has a single category. Rudolfo's classification is confirmed and is never replaced by later suggestions.",
+		description: "Sets the category of a transaction, or applies one of Rudolfo's classification rules (rule_id). Each transaction has a single category. Rudolfo's classification is confirmed and is never replaced by later suggestions or rules.",
 		scope:       accounts.ScopeExpensesWrite,
 		idempotent:  true,
 		enums:       map[string][]any{"category_status": {"suggested", "confirmed"}},
@@ -206,14 +207,26 @@ func (s *Server) registerTransactions() {
 		if err != nil {
 			return CorrectionOutput{}, err
 		}
-		status, author, reason := ledger.AllocationConfirmed, ledger.AuthorUser, "Categoria definida por Rudolfo."
-		if in.CategoryStatus == string(ledger.AllocationSuggested) {
-			status, author, reason = ledger.AllocationSuggested, ledger.AuthorAgent, "Classificado pela Case."
+		ruleID, err := optionalID("rule_id", in.RuleID)
+		if err != nil {
+			return CorrectionOutput{}, err
 		}
-		if strings.TrimSpace(in.Reason) != "" {
-			reason = in.Reason
+		var result ledger.Categorization
+		if ruleID != nil {
+			if strings.TrimSpace(in.Category) != "" {
+				return CorrectionOutput{}, invalid("category", "leave it out with rule_id: the category is the rule's")
+			}
+			result, err = s.deps.Ledger.CategorizeByRule(ctx, c.principal.AccountID, id, *ruleID, c.actor(ledger.AuthorAgent, in.RequestID))
+		} else {
+			status, author, reason := ledger.AllocationConfirmed, ledger.AuthorUser, "Categoria definida por Rudolfo."
+			if in.CategoryStatus == string(ledger.AllocationSuggested) {
+				status, author, reason = ledger.AllocationSuggested, ledger.AuthorAgent, "Classificado pela Case."
+			}
+			if strings.TrimSpace(in.Reason) != "" {
+				reason = in.Reason
+			}
+			result, err = s.deps.Ledger.Categorize(ctx, c.principal.AccountID, id, in.Category, status, reason, c.actor(author, in.RequestID))
 		}
-		result, err := s.deps.Ledger.Categorize(ctx, c.principal.AccountID, id, in.Category, status, reason, c.actor(author, in.RequestID))
 		if err != nil {
 			return CorrectionOutput{}, err
 		}

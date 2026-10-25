@@ -504,7 +504,8 @@ func (s *statementSubmitter) createInstallmentPurchase(statement tenantdb.Statem
 		return StatementLine{}, err
 	}
 	if item.Category != nil {
-		if _, err := s.t.categorize(created, *item.Category, AllocationSuggested, reasonClassified, s.actor); err != nil {
+		classifier, reason := classifierOf(s.actor, item.rule)
+		if _, err := s.t.categorize(created, *item.Category, AllocationSuggested, reason, classifier); err != nil {
 			return StatementLine{}, err
 		}
 	}
