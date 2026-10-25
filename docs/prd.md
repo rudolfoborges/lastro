@@ -242,7 +242,7 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 ### Evolução posterior
 
 - Resumo diário automático, após definição de horário e ativação.
-- Dashboard privado e imagens dos resumos.
+- Imagens dos resumos.
 - Regras de classificação mais abrangentes e novas fontes de despesas, conforme necessidade.
 - Dividir uma compra entre categorias, com valores que fechem exatamente no total, se surgir necessidade. Na primeira entrega cada compra tem uma categoria.
 
@@ -254,6 +254,8 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 - Resumo diário: às **8h** no fuso de Rudolfo, com as compras do dia anterior, ativado já por pedido explícito dele (decidido em 24/10/2026, #51). A Case agenda a rotina e envia o resumo; o Lastro só o calcula, guarda o horário e marca cada dia entregue, para nunca enviar o mesmo dia duas vezes. O resumo nasce desativado e só é ligado quando Rudolfo pede. Em dias sem registro, mostra a limitação de cobertura em vez de afirmar que não houve gastos (#52).
 - Imagens dos resumos: a **Case desenha** os gráficos na conversa (decidido por Rudolfo em 24/10/2026, #54). O Lastro não gera PNG: devolve, nas próprias consultas, os dados do gráfico com os mesmos totais da resposta, o período, a visão e as limitações.
 - Regras mais abrangentes e novas fontes (#55): regras com **condições combinadas** (estabelecimento, faixa de valor, cartão e meio de pagamento) e **sugestões de regra** feitas pela Case a partir das categorias que Rudolfo confirmou, que só passam a valer com a aprovação dele. **Nenhuma fonte nova** por ora (decidido por Rudolfo em 24/10/2026): extrato bancário e Open Finance ficam para quando houver necessidade.
+
+- App de acompanhamento financeiro: o app Android passa a ser a superfície de **consulta** das despesas (visão geral, despesas, análises e coleta), sem nenhuma ação que crie, altere, confirme ou concilie registros. As regras de leitura e as decisões da implementação estão em [`docs/app.md`](app.md) (25/10/2026).
 
 ### Decisões que ainda precisam ser tomadas
 
