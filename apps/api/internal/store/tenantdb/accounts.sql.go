@@ -12,7 +12,7 @@ import (
 )
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, name, created_at, timezone, statement_month, sandbox_of
+SELECT id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
 FROM accounts
 WHERE id = $1
 `
@@ -27,6 +27,8 @@ func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 		&i.Timezone,
 		&i.StatementMonth,
 		&i.SandboxOf,
+		&i.DailySummaryEnabled,
+		&i.DailySummaryTime,
 	)
 	return i, err
 }
@@ -49,7 +51,7 @@ const updateAccountTimezone = `-- name: UpdateAccountTimezone :one
 UPDATE accounts
 SET timezone = $1
 WHERE id = $2
-RETURNING id, name, created_at, timezone, statement_month, sandbox_of
+RETURNING id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
 `
 
 type UpdateAccountTimezoneParams struct {
@@ -67,6 +69,37 @@ func (q *Queries) UpdateAccountTimezone(ctx context.Context, arg UpdateAccountTi
 		&i.Timezone,
 		&i.StatementMonth,
 		&i.SandboxOf,
+		&i.DailySummaryEnabled,
+		&i.DailySummaryTime,
+	)
+	return i, err
+}
+
+const updateDailySummarySettings = `-- name: UpdateDailySummarySettings :one
+UPDATE accounts
+SET daily_summary_enabled = $1, daily_summary_time = $2
+WHERE id = $3
+RETURNING id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
+`
+
+type UpdateDailySummarySettingsParams struct {
+	Enabled bool
+	At      string
+	ID      uuid.UUID
+}
+
+func (q *Queries) UpdateDailySummarySettings(ctx context.Context, arg UpdateDailySummarySettingsParams) (Account, error) {
+	row := q.db.QueryRow(ctx, updateDailySummarySettings, arg.Enabled, arg.At, arg.ID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Timezone,
+		&i.StatementMonth,
+		&i.SandboxOf,
+		&i.DailySummaryEnabled,
+		&i.DailySummaryTime,
 	)
 	return i, err
 }

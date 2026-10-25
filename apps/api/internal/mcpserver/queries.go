@@ -306,7 +306,7 @@ func (s *Server) querySpending(ctx context.Context, c call, in QuerySpendingInpu
 	if out.Coverage, err = s.periodCoverage(ctx, c, from, to, today); err != nil {
 		return QuerySpendingOutput{}, err
 	}
-	out.Summary = purchasesSummary(out, from, to)
+	out.Summary = purchasesSummary(out, fmt.Sprintf("Compras de %s a %s, pela data da compra.", from.Format(), to.Format()))
 	return out, nil
 }
 
@@ -406,9 +406,9 @@ func (s *Server) periodCoverage(ctx context.Context, c call, from, to, today cal
 	return note, nil
 }
 
-func purchasesSummary(out QuerySpendingOutput, from, to calendar.Date) string {
+func purchasesSummary(out QuerySpendingOutput, heading string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Compras de %s a %s, pela data da compra.", from.Format(), to.Format())
+	b.WriteString(heading)
 	empty := true
 	for _, total := range out.Totals {
 		empty = false

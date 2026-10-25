@@ -76,6 +76,7 @@ Rules that always apply:
 - When Rudolfo sends a credit card statement PDF, read get_instructions topic "statements", read every page yourself and send only the structured reading with submit_statement_extraction (first with dry_run true). Never send the PDF to Lastro and never record statement lines with record_expense. "O que falta conferir nesta fatura?" is answered by get_statement_review.
 - Before answering about spending, statements, installments or Pix parcelado, read get_instructions topic "queries" and use its tools. Say which view and period you used, keep confirmed, provisional and pending apart, and relay the coverage limitations.
 - Never add up amounts yourself.
+- The daily summary is off until Rudolfo asks for it. To turn it on or off, or when your scheduled daily summary task runs, read get_instructions topic "daily_summary" and follow it.
 - When Rudolfo asks for an evaluation ("avalie como você usa o Lastro"), read get_instructions topic "evaluation" and follow it: everything goes to a sandbox account until finish_case_evaluation, and you never ask Rudolfo anything in between.
 ```
 
@@ -178,7 +179,10 @@ Rudolfo sends the monthly statement PDF to Case in the conversation. Case reads 
 
 ## Scheduled routines
 
-Later work without a request from Rudolfo, such as the daily summary, follows the same rule: Lastro computes, and a ChatGPT scheduled task or the next conversation delivers it.
+Work without a request from Rudolfo follows the same rule: Lastro computes, and Case's scheduled task delivers it.
+
+- **Google Wallet inbox:** the routine that processes pending notifications (topic `notifications`).
+- **Daily summary (#52):** after Rudolfo asks to turn it on ("ativa o resumo diário às 8h"), Case calls `set_daily_summary` and keeps a daily task at that time in his time zone. Each run calls `get_daily_summary`, sends the `summary` unless it is off or `delivered`, and then calls `mark_daily_summary_delivered` (topic `daily_summary`).
 
 ## Manual test checklist (production)
 
@@ -242,6 +246,13 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Quanto ainda tenho de parcelas futuras?" separates known from estimated and says how old the information is.
 - [ ] A question about a period before the tracking started is answered with the limitation, never as "no spending".
 - [ ] "Exporte meus dados" gives a link that downloads the zip within 15 minutes and stops working afterwards.
+
+### Daily summary (M6)
+
+- [ ] "Ativa o resumo diário às 8h" makes Case call `set_daily_summary` and create its daily task at 08:00.
+- [ ] The next morning Case sends yesterday's purchases with confirmed, provisional and pending apart, and the coverage limitations when there are gaps.
+- [ ] A second run on the same day sends nothing (`delivered`).
+- [ ] "Para de mandar o resumo" turns it off; the next run sends nothing.
 
 ### Case evaluation (M5)
 

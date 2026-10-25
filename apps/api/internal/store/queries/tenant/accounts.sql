@@ -14,3 +14,9 @@ UPDATE accounts
 SET timezone = @timezone
 WHERE id = @id
 RETURNING *;
+
+-- name: UpdateDailySummarySettings :one
+UPDATE accounts
+SET daily_summary_enabled = @enabled, daily_summary_time = @at
+WHERE id = @id
+RETURNING *;
