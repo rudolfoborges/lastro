@@ -369,6 +369,8 @@ The principal, interest, IOF and fee Case reads on a statement line are stored i
   - **Freshness:** each plan carries the date of its information, and a projection older than 40 days is flagged as stale.
 - **Payments** (`Payments`): each statement's previous balance, payments and credits, and whether the next statement of the same card shows it paid. A reconciled statement is never "paid" without that evidence. Payments and balances never count as spending.
 
+**Charts** (#54): Case draws the charts in the conversation; Lastro never renders images. `query_spending`, `get_daily_summary` and `get_future_commitments` return `charts`, and `get_statement_summary` returns `chart`. Each one has the answer's own numbers laid out as labels and series, one chart per currency, with a pt-BR title, the period and notes (premise and coverage limitations). Every series `total` is the exact sum of its points and equals the matching total of the answer (tested). Stacked series keep confirmed, provisional and pending apart, so the stack is never presented as the definitive total.
+
 ### Daily summary
 
 The daily summary (#52) is Case's message with the previous day's purchases. Lastro computes it and never sends messages.

@@ -64,6 +64,9 @@ func TestTheDailySummaryShowsYesterdayWithItsCoverage(t *testing.T) {
 			t.Errorf("summary = %q, want %q", yesterday.out.Summary, want)
 		}
 	}
+	if len(yesterday.out.Charts) != 1 || seriesTotals(yesterday.out.Charts[0])["Confirmados"] != "327.39" || seriesTotals(yesterday.out.Charts[0])["Provisórios"] != "200.00" {
+		t.Errorf("charts = %+v, want the day's totals", yesterday.out.Charts)
+	}
 	if yesterday.out.Coverage == nil || yesterday.out.Coverage.Complete {
 		t.Errorf("coverage = %+v, want the gap of a day without tracking", yesterday.out.Coverage)
 	}

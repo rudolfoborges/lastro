@@ -80,6 +80,7 @@ type QuerySpendingOutput struct {
 	Undated       int                    `json:"undated,omitempty" jsonschema:"records without a date, in no period"`
 	OpenQuestions int                    `json:"open_questions" jsonschema:"open questions about the transactions of these totals"`
 	Coverage      CoverageNoteOutput     `json:"coverage"`
+	Charts        []ChartOutput          `json:"charts,omitempty" jsonschema:"the same totals laid out for you to draw when Rudolfo wants to see them"`
 	Summary       string                 `json:"summary"`
 }
 
@@ -120,6 +121,7 @@ type StatementSummaryOutput struct {
 	Categories []StatementCategoryOutput `json:"categories" jsonschema:"what the cycle charges, by category"`
 	Modalities []ModalitySubtotalOutput  `json:"modalities,omitempty"`
 	Payment    StatementPaymentOutput    `json:"payment"`
+	Chart      *ChartOutput              `json:"chart,omitempty" jsonschema:"the categories laid out for you to draw when Rudolfo wants to see them"`
 	Summary    string                    `json:"summary"`
 }
 
@@ -164,6 +166,7 @@ type FutureCommitmentsOutput struct {
 	Months            []CommitmentMonthOutput  `json:"months"`
 	Plans             []PlanCommitmentOutput   `json:"plans"`
 	OldestInformation *string                  `json:"oldest_information,omitempty" jsonschema:"date of the oldest information behind the projection"`
+	Charts            []ChartOutput            `json:"charts,omitempty" jsonschema:"the months laid out for you to draw when Rudolfo wants to see them"`
 	Summary           string                   `json:"summary"`
 }
 
@@ -304,6 +307,9 @@ func (s *Server) querySpending(ctx context.Context, c call, in QuerySpendingInpu
 		return QuerySpendingOutput{}, err
 	}
 	if out.Coverage, err = s.periodCoverage(ctx, c, from, to, today); err != nil {
+		return QuerySpendingOutput{}, err
+	}
+	if out.Charts, err = purchasesCharts(view, ledger.GroupBy(in.GroupBy), from, to, append([]string{out.Premise}, out.Coverage.Limitations...)); err != nil {
 		return QuerySpendingOutput{}, err
 	}
 	out.Summary = purchasesSummary(out, fmt.Sprintf("Compras de %s a %s, pela data da compra.", from.Format(), to.Format()))
@@ -492,6 +498,13 @@ func (s *Server) statementSummary(ctx context.Context, c call, in StatementRefIn
 			out.Payment.PaidAmount, out.Payment.PaidIn = &paid, &closing
 		}
 	}
+	if len(view.Categories) > 0 {
+		chart, err := statementChart(view)
+		if err != nil {
+			return StatementSummaryOutput{}, err
+		}
+		out.Chart = &chart
+	}
 	out.Summary = statementChargesSummary(out, view)
 	return out, nil
 }
@@ -588,6 +601,9 @@ func (s *Server) futureCommitments(ctx context.Context, c call, in FutureCommitm
 	if view.OldestInformation != nil {
 		oldest := view.OldestInformation.String()
 		out.OldestInformation = &oldest
+	}
+	if out.Charts, err = commitmentsCharts(view); err != nil {
+		return FutureCommitmentsOutput{}, err
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Parcelas futuras em %s:", view.AsOf.Format())

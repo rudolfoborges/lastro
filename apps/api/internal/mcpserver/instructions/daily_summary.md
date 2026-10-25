@@ -18,7 +18,8 @@ At the scheduled time, every day:
    - the coverage limitations, before any number. A day with no records and incomplete coverage is never "no spending";
    - confirmed, provisional and pending apart. Never add them up, never add currencies, never compute totals yourself;
    - the open questions, when there are any, with an offer to resolve them.
-5. Right after sending, call `mark_daily_summary_delivered` with the same `day`.
+5. If Rudolfo asked for the summary with a chart, draw `charts` as the `queries` procedure says, with its notes.
+6. Right after sending, call `mark_daily_summary_delivered` with the same `day`.
 
 If the routine did not run on some day, do not catch up on old days unless Rudolfo asks; when he does, call `get_daily_summary` with that `day`.
 
