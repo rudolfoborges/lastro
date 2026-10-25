@@ -74,6 +74,7 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerCoverage()
 	s.registerStatements()
 	s.registerMatching()
+	s.registerRules()
 	return s
 }
 

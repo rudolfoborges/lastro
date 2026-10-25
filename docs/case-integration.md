@@ -224,3 +224,9 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Quanto do Pix parcelado é juros?" is answered from the plan's `breakdown` when the statement details it; otherwise Case says the composition was not informed.
 - [ ] "A loja devolveu 30 daquela compra de 100" records a refund linked to the purchase; `get_transaction` on the purchase shows R$ 70,00 net and both records.
 - [ ] A purchase paid in dollars ("gastei US$ 20 no app") stays in dollars until the statement; linking the statement line keeps US$ 20,00 as the original and R$ charged as the amount.
+
+### Classification rules (M5)
+
+- [ ] "Sempre que for na Padaria X, é café da manhã" makes Case call `create_classification_rule`; a later purchase there is classified with `category_rule_id` and shows origin `rule`.
+- [ ] A one-off "essa foi mercado" changes only that purchase: no rule appears in `list_classification_rules`.
+- [ ] A category Rudolfo confirmed stays when Case or a rule suggests another; the difference becomes a question.

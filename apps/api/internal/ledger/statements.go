@@ -142,6 +142,8 @@ type StatementItem struct {
 	Components           []ChargeComponent
 	FutureInstallments   []FutureInstallment
 	Category             *string
+	CategoryRuleID       *uuid.UUID
+	rule                 *ClassificationRule
 	Purpose              *string
 	RelatedTransactionID *uuid.UUID
 	RefundOfID           *uuid.UUID

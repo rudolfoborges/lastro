@@ -104,3 +104,24 @@ func TestCaseRecordsARefundAndSeesTheNet(t *testing.T) {
 		t.Errorf("get_transaction = %+v", detail.out)
 	}
 }
+
+func TestCaseSavesListsAndAppliesARuleRudolfoAskedFor(t *testing.T) {
+	e := newEnv(t)
+	session := e.session(e.principal("Rudolfo", "expenses:read", "expenses:write"))
+	created := callTool[mcpserver.ClassificationRuleResult](t, session, "create_classification_rule", map[string]any{
+		"merchant": "Padaria Pão Quente", "category": "meals", "instruction": "Sempre que for na Padaria Pão Quente, é café da manhã", "request_id": "rule-1",
+	}, nil)
+	listed := callTool[mcpserver.ListClassificationRulesOutput](t, session, "list_classification_rules", map[string]any{}, nil)
+	told := supermarket("message-1")
+	delete(told, "category")
+	recorded := callTool[mcpserver.RecordExpenseOutput](t, session, "record_expense", told, chatgpt).out.Transaction
+
+	applied := callTool[mcpserver.CorrectionOutput](t, session, "set_category", map[string]any{"transaction_id": recorded.ID, "rule_id": created.out.Rule.ID, "request_id": "classify-1"}, nil)
+
+	if created.isError || len(listed.out.Rules) != 1 || listed.out.Rules[0].Category.Code != "meals" {
+		t.Fatalf("create = %+v (%s), list = %+v", created.out, created.text, listed.out)
+	}
+	if applied.isError || applied.out.Transaction.Category.Code != "meals" || applied.out.Transaction.Category.Origin != "rule" {
+		t.Errorf("set_category(rule_id) = %+v (%s)", applied.out, applied.text)
+	}
+}

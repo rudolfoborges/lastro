@@ -68,6 +68,7 @@ type InterpretationInput struct {
 	CardLast4            string `json:"card_last4,omitempty" jsonschema:"last 4 digits shown in the notification"`
 	OccurredAt           string `json:"occurred_at,omitempty" jsonschema:"purchase time written in the text, RFC 3339 with offset; omit to use posted_at"`
 	Category             string `json:"category,omitempty" jsonschema:"suggested category code from list_categories"`
+	CategoryRuleID       string `json:"category_rule_id,omitempty" jsonschema:"Rudolfo's classification rule that decided the category, from list_classification_rules; the category is the rule's"`
 	Purpose              string `json:"purpose,omitempty" jsonschema:"only when Rudolfo told you why"`
 	RelatedTransactionID string `json:"related_transaction_id,omitempty" jsonschema:"transaction this notification refers to: required for purchase_update and cancellation, the refunded purchase for refund, or a conversation record that is the same purchase"`
 	ConfirmDistinct      bool   `json:"confirm_distinct,omitempty" jsonschema:"true when a possible_match candidate is a different purchase"`
@@ -231,6 +232,9 @@ func notificationInterpretation(in InterpretationInput) (ledger.NotificationInte
 		return reading, invalid("payment_method", "is required with card_last4: send credit_card or debit_card when you know which card it is, or leave both out")
 	}
 	if reading.OccurredAt, err = parseOptionalInstant("occurred_at", in.OccurredAt); err != nil {
+		return reading, err
+	}
+	if reading.CategoryRuleID, err = optionalID("category_rule_id", in.CategoryRuleID); err != nil {
 		return reading, err
 	}
 	if strings.TrimSpace(in.RelatedTransactionID) != "" {

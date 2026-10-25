@@ -94,6 +94,20 @@ type Clarification struct {
 	StatementID   *uuid.UUID
 }
 
+type ClassificationRule struct {
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	Merchant       string
+	MerchantKey    string
+	CategoryID     uuid.UUID
+	Purpose        *string
+	Instruction    string
+	Status         string
+	ArchivedReason *string
+	CreatedAt      time.Time
+	ArchivedAt     *time.Time
+}
+
 type FieldProvenance struct {
 	AccountID       uuid.UUID
 	TransactionID   uuid.UUID

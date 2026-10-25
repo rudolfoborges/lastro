@@ -66,6 +66,13 @@ func (s *Service) SubmitStatement(ctx context.Context, accountID uuid.UUID, in S
 
 func (s *statementSubmitter) run() (StatementSubmission, error) {
 	hash := contentHash(s.in, s.identities)
+	for i := range s.in.Items {
+		rule, err := s.t.applyRule(s.in.Items[i].CategoryRuleID, &s.in.Items[i].Category, fmt.Sprintf("items[%d].category_rule_id", i))
+		if err != nil {
+			return StatementSubmission{}, err
+		}
+		s.in.Items[i].rule = rule
+	}
 	existing, err := s.t.q.LockStatementByIdentity(s.t.ctx, s.identity())
 	switch {
 	case err == nil:
@@ -413,7 +420,8 @@ func (s *statementSubmitter) create(observationID uuid.UUID, item StatementItem)
 		}
 	}
 	if category != nil {
-		if _, err := s.t.categorize(created, *category, AllocationSuggested, reasonClassified, s.actor); err != nil {
+		classifier, reason := classifierOf(s.actor, item.rule)
+		if _, err := s.t.categorize(created, *category, AllocationSuggested, reason, classifier); err != nil {
 			return StatementLine{}, err
 		}
 	}
@@ -468,7 +476,8 @@ func (s *statementSubmitter) linkWith(observationID uuid.UUID, item StatementIte
 			return StatementLine{}, err
 		}
 		if existing == nil {
-			if _, err := s.t.categorize(correction.Transaction, *item.Category, AllocationSuggested, reasonClassified, actor); err != nil {
+			classifier, reason := classifierOf(actor, item.rule)
+			if _, err := s.t.categorize(correction.Transaction, *item.Category, AllocationSuggested, reason, classifier); err != nil {
 				return StatementLine{}, err
 			}
 		}
