@@ -19,8 +19,6 @@ sealed interface ItemStatus {
 
 data class HistoryItem(val capture: CaptureRecord, val status: ItemStatus)
 
-data class Summary(val awaitingCase: Int, val processed: Int, val notSent: Int)
-
 object History {
     fun merge(captures: List<CaptureRecord>, server: List<ServerNotification>?): List<HistoryItem> {
         val byVersion = server.orEmpty().associateBy { it.notificationId to it.version }
@@ -36,16 +34,6 @@ object History {
             HistoryItem(capture, status(capture, match))
         }
     }
-
-    fun summarize(items: List<HistoryItem>): Summary = Summary(
-        awaitingCase = items.count { it.status == ItemStatus.AwaitingCase },
-        processed = items.count { it.status is ItemStatus.Processed },
-        notSent = items.count { it.status.notSent },
-    )
-
-    private val ItemStatus.notSent: Boolean
-        get() = this == ItemStatus.OnlyOnPhone || this == ItemStatus.Queued || this == ItemStatus.TrackingPaused ||
-            this == ItemStatus.Discarded || this is ItemStatus.Refused
 
     private fun status(capture: CaptureRecord, match: ServerNotification?): ItemStatus = when {
         match != null -> match.reading?.let(ItemStatus::Processed) ?: ItemStatus.AwaitingCase
