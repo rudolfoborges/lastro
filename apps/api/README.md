@@ -345,6 +345,23 @@ The principal, interest, IOF and fee Case reads on a statement line are stored i
 - **Missing breakdown:** a Pix installment charged without included components opens one `missing_breakdown` question per plan, on its purchase, never one per cycle. It closes when a later statement details an installment.
 - **Purpose:** a Pix installment purchase without purpose opens `purpose_unknown`, asking whether it paid for goods or services, a transfer or a refinancing. Answering never changes the statement total. The modality stays in the plan, apart from category and purpose.
 
+### Views
+
+`ledger/views.go` (#45) answers the four views of PRD §5. Each one has its own function and never adds values of another view; the MCP query tools of #46 expose them.
+
+- **Purchases** (`Purchases`): expenses and refunds by purchase date, in the account time zone. Voided and merged records are excluded.
+  - **Totals:** one entry per currency, never converted. Each splits confirmed, provisional and pending (`pending_clarification`, an unresolved overlap) purchases, each with the IDs that compose it.
+  - **Refunds:** counted in the period of their own date, with `NetConfirmed` = confirmed purchases − confirmed refunds.
+  - **Excluded from totals:** purchases whose total was never informed (`amount_basis = installment`) are listed apart in `UnknownTotal`. Undated records are only counted (`Undated`).
+  - **Grouping:** by category, merchant, day, ISO week, month, payment method or modality.
+  - **Filters:** category (`unidentified` includes the uncategorized), merchant (folded), modality (`card_installment`, `pix_installment`, `upfront`), card, statement, status and evidence source.
+- **Statement charges** (`StatementCharges`): the review of a cycle, with its debit lines by the category of their transaction. Installments of the cycle count with their own amount, never the full purchase. A modality breakdown of the installments, with the charges included in them, is a second reading of the same lines and is never added to the categories.
+- **Future commitments** (`FutureCommitments`):
+  - **Totals:** the remaining installments of every active plan, known and estimated apart, per currency.
+  - **Months:** each installment is placed one month after the last charged one, or after the purchase while none was charged; in that case the month itself is estimated.
+  - **Freshness:** each plan carries the date of its information, and a projection older than 40 days is flagged as stale.
+- **Payments** (`Payments`): each statement's previous balance, payments and credits, and whether the next statement of the same card shows it paid. A reconciled statement is never "paid" without that evidence. Payments and balances never count as spending.
+
 ### Matching sources
 
 The same purchase may arrive from the conversation, from Google Wallet and from a statement. **Lastro never links them by itself** (`ledger/matching.go`): it offers explainable candidates and Case decides, asking Rudolfo when in doubt.
