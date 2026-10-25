@@ -73,6 +73,7 @@ type StatementReview struct {
 type StatementRef struct {
 	StatementID *uuid.UUID
 	ClosingDate *calendar.Date
+	Month       *string
 	CardLast4   *string
 }
 
@@ -197,6 +198,22 @@ func (t *tx) findStatement(ref StatementRef) (tenantdb.Statement, error) {
 			return rows[0], nil
 		}
 		return tenantdb.Statement{}, &ValidationError{Field: "card_last4", Message: "is required: more than one card has a statement closing on this date"}
+	case ref.Month != nil:
+		basis, err := t.monthBasis()
+		if err != nil {
+			return tenantdb.Statement{}, err
+		}
+		rows, err := t.q.FindStatementsInMonth(t.ctx, tenantdb.FindStatementsInMonthParams{AccountID: t.accountID, ByDue: basis == MonthByDue, Month: *ref.Month, CardLast4: ref.CardLast4})
+		if err != nil {
+			return tenantdb.Statement{}, fmt.Errorf("find statements: %w", err)
+		}
+		switch len(rows) {
+		case 0:
+			return tenantdb.Statement{}, ErrStatementNotFound
+		case 1:
+			return rows[0], nil
+		}
+		return tenantdb.Statement{}, &ValidationError{Field: "card_last4", Message: "is required: more than one statement belongs to this month"}
 	default:
 		statement, err := t.q.LatestStatement(t.ctx, t.accountID)
 		if errors.Is(err, pgx.ErrNoRows) {

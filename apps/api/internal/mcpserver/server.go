@@ -29,7 +29,7 @@ const serverInstructions = `Lastro stores, validates and computes Rudolfo's expe
 - Never compute totals yourself; use Lastro's query tools.
 - Statement PDFs never go to Lastro: read them yourself and submit only the structured reading.
 - Lastro never decides that records from different sources are the same purchase: you do, from the candidates it explains, asking Rudolfo when in doubt.
-Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, and "matching" before linking records of the same purchase.`
+Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, "matching" before linking records of the same purchase, and "queries" before answering questions about totals.`
 
 type Deps struct {
 	Accounts *accounts.Service
@@ -75,6 +75,7 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerStatements()
 	s.registerMatching()
 	s.registerRules()
+	s.registerQueries()
 	return s
 }
 

@@ -40,6 +40,24 @@ func (q *Queries) ActivePlanTransactions(ctx context.Context, accountID uuid.UUI
 	return items, nil
 }
 
+const countOpenQuestionsOf = `-- name: CountOpenQuestionsOf :one
+SELECT count(*)::int
+FROM clarifications
+WHERE account_id = $1 AND status = 'open' AND transaction_id = ANY($2::uuid[])
+`
+
+type CountOpenQuestionsOfParams struct {
+	AccountID      uuid.UUID
+	TransactionIds []uuid.UUID
+}
+
+func (q *Queries) CountOpenQuestionsOf(ctx context.Context, arg CountOpenQuestionsOfParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countOpenQuestionsOf, arg.AccountID, arg.TransactionIds)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countUndatedPurchases = `-- name: CountUndatedPurchases :one
 SELECT count(*)::int
 FROM transactions
@@ -54,6 +72,63 @@ func (q *Queries) CountUndatedPurchases(ctx context.Context, accountID uuid.UUID
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const findStatementsInMonth = `-- name: FindStatementsInMonth :many
+SELECT s.id, s.account_id, s.issuer, s.issuer_key, s.card_last4, s.closing_date, s.payment_method_id, s.created_at
+FROM statements s
+JOIN LATERAL (
+    SELECT sv.due_date
+    FROM statement_versions sv
+    WHERE sv.account_id = s.account_id AND sv.statement_id = s.id
+    ORDER BY sv.version DESC
+    LIMIT 1
+) v ON true
+WHERE s.account_id = $1
+  AND to_char(CASE WHEN $2::boolean THEN v.due_date ELSE s.closing_date END, 'YYYY-MM') = $3::text
+  AND ($4::text IS NULL OR s.card_last4 = $4::text)
+ORDER BY s.closing_date
+`
+
+type FindStatementsInMonthParams struct {
+	AccountID uuid.UUID
+	ByDue     bool
+	Month     string
+	CardLast4 *string
+}
+
+func (q *Queries) FindStatementsInMonth(ctx context.Context, arg FindStatementsInMonthParams) ([]Statement, error) {
+	rows, err := q.db.Query(ctx, findStatementsInMonth,
+		arg.AccountID,
+		arg.ByDue,
+		arg.Month,
+		arg.CardLast4,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Statement{}
+	for rows.Next() {
+		var i Statement
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.Issuer,
+			&i.IssuerKey,
+			&i.CardLast4,
+			&i.ClosingDate,
+			&i.PaymentMethodID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listStatementsWithLatestVersion = `-- name: ListStatementsWithLatestVersion :many

@@ -662,3 +662,86 @@ func nextOfCard(all []StatementPayments, index int) *StatementPayments {
 func inMonths(month, from, to string) bool {
 	return (from == "" || month >= from) && (to == "" || month <= to)
 }
+
+func (s *Service) OpenQuestionsOf(ctx context.Context, accountID uuid.UUID, ids []uuid.UUID) (int, error) {
+	var count int
+	err := s.inTx(ctx, accountID, func(t *tx) error {
+		n, err := t.q.CountOpenQuestionsOf(t.ctx, tenantdb.CountOpenQuestionsOfParams{AccountID: t.accountID, TransactionIds: ids})
+		if err != nil {
+			return fmt.Errorf("count open questions: %w", err)
+		}
+		count = int(n)
+		return nil
+	})
+	return count, err
+}
+
+type PixPlan struct {
+	Transaction Transaction
+	Plan        InstallmentPlan
+}
+
+type PixTotals struct {
+	Currency           string
+	Charged            money.Money
+	Breakdown          map[ComponentKind]money.Money
+	WithoutBreakdown   int
+	RemainingKnown     money.Money
+	RemainingEstimated money.Money
+}
+
+type PixView struct {
+	Plans  []PixPlan
+	Totals []PixTotals
+}
+
+// PixInstallments gathers the Pix installment plans with what statements
+// charged, the interest and fees they detailed inside those installments, and
+// what is still to come.
+func (s *Service) PixInstallments(ctx context.Context, accountID uuid.UUID) (PixView, error) {
+	var view PixView
+	err := s.inTx(ctx, accountID, func(t *tx) error {
+		ids, err := t.q.ActivePlanTransactions(t.ctx, t.accountID)
+		if err != nil {
+			return fmt.Errorf("active plans: %w", err)
+		}
+		totals := map[string]*PixTotals{}
+		for _, id := range ids {
+			plan, err := t.installmentPlan(id)
+			if err != nil {
+				return err
+			}
+			if plan == nil || plan.Modality != ModalityPixInstallment {
+				continue
+			}
+			transaction, err := t.transaction(id)
+			if err != nil {
+				return err
+			}
+			view.Plans = append(view.Plans, PixPlan{Transaction: transaction, Plan: *plan})
+			currency := plan.Charged.Currency
+			total, ok := totals[currency]
+			if !ok {
+				zero := money.Money{Currency: currency}
+				total = &PixTotals{Currency: currency, Charged: zero, RemainingKnown: zero, RemainingEstimated: zero, Breakdown: map[ComponentKind]money.Money{}}
+				totals[currency] = total
+			}
+			total.Charged.Minor += plan.Charged.Minor
+			total.RemainingKnown.Minor += plan.RemainingKnown.Minor
+			total.RemainingEstimated.Minor += plan.RemainingEstimated.Minor
+			total.WithoutBreakdown += plan.ChargedWithoutDetail
+			for _, component := range plan.Breakdown {
+				sum := total.Breakdown[component.Kind]
+				sum.Currency = currency
+				sum.Minor += component.Amount.Minor
+				total.Breakdown[component.Kind] = sum
+			}
+		}
+		for _, total := range totals {
+			view.Totals = append(view.Totals, *total)
+		}
+		sort.Slice(view.Totals, func(i, j int) bool { return view.Totals[i].Currency < view.Totals[j].Currency })
+		return nil
+	})
+	return view, err
+}
