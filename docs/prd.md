@@ -246,10 +246,13 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 - Regras de classificação mais abrangentes e novas fontes de despesas, conforme necessidade.
 - Dividir uma compra entre categorias, com valores que fechem exatamente no total, se surgir necessidade. Na primeira entrega cada compra tem uma categoria.
 
+### Decisões tomadas
+
+- Referência dos comparativos mensais de faturas: o mês do **fechamento**, que acompanha o período de consumo do ciclo (decidido por Rudolfo em 24/10/2026, #44).
+
 ### Decisões que ainda precisam ser tomadas
 
 - Horário do resumo diário.
-- Referência desejada para os comparativos mensais de faturas, como mês do fechamento ou vencimento.
 - Por quanto tempo manter os documentos originais.
 - Quais compras e informações são efetivamente cobertas pelas notificações no aparelho de Rudolfo.
 - Quando migrar os registros existentes e passar a considerar o novo controle como fonte principal.

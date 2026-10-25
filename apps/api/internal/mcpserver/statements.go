@@ -84,6 +84,8 @@ type StatementOutput struct {
 	CardLast4       string       `json:"card_last4"`
 	ClosingDate     string       `json:"closing_date"`
 	DueDate         string       `json:"due_date"`
+	Month           string       `json:"month" jsonschema:"month this statement belongs to in monthly comparisons, YYYY-MM"`
+	MonthBasis      string       `json:"month_basis" jsonschema:"closing or due: which date names the month, as Rudolfo chose"`
 	Version         int          `json:"version" jsonschema:"1 for the first reading of this statement"`
 	Total           MoneyOutput  `json:"total" jsonschema:"total printed on the statement"`
 	PreviousBalance *MoneyOutput `json:"previous_balance,omitempty"`
@@ -643,6 +645,8 @@ func statementOutput(statement ledger.Statement) *StatementOutput {
 		CardLast4:   statement.CardLast4,
 		ClosingDate: statement.ClosingDate.String(),
 		DueDate:     statement.Version.DueDate.String(),
+		Month:       statement.Month,
+		MonthBasis:  string(statement.MonthBasis),
 		Version:     statement.Version.Number,
 		Total:       moneyOutput(statement.Version.Total),
 		Reading:     string(statement.Version.Reading),

@@ -11,10 +11,11 @@ import (
 )
 
 type Account struct {
-	ID        uuid.UUID
-	Name      string
-	CreatedAt time.Time
-	Timezone  string
+	ID             uuid.UUID
+	Name           string
+	CreatedAt      time.Time
+	Timezone       string
+	StatementMonth string
 }
 
 type ApiKey struct {

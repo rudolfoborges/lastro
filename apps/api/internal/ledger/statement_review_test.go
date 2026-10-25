@@ -187,3 +187,22 @@ func (f *fixture) countWhere(table, condition string) int {
 	}
 	return count
 }
+
+func TestAStatementBelongsToTheMonthOfItsClosingDateByDefault(t *testing.T) {
+	f := newFixture(t)
+	in := reconciledStatement()
+	in.ClosingDate, in.DueDate = *day("2026-09-28"), *day("2026-10-05")
+	in.PeriodEnd = day("2026-09-28")
+	f.submitStatement(in)
+
+	closing := f.review(ledger.StatementRef{})
+	f.exec("UPDATE accounts SET statement_month = 'due'")
+	due := f.review(ledger.StatementRef{})
+
+	if closing.Statement.Month != "2026-09" || closing.Statement.MonthBasis != ledger.MonthByClosing {
+		t.Errorf("month = %s by %s, want September by the closing date", closing.Statement.Month, closing.Statement.MonthBasis)
+	}
+	if due.Statement.Month != "2026-10" || due.Statement.MonthBasis != ledger.MonthByDue {
+		t.Errorf("month = %s by %s, want October when the account counts by due date", due.Statement.Month, due.Statement.MonthBasis)
+	}
+}

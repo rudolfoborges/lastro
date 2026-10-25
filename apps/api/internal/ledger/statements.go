@@ -175,11 +175,20 @@ type StatementExtraction struct {
 	DryRun          bool
 }
 
+type MonthBasis string
+
+const (
+	MonthByClosing MonthBasis = "closing"
+	MonthByDue     MonthBasis = "due"
+)
+
 type Statement struct {
 	ID          uuid.UUID
 	Issuer      string
 	CardLast4   string
 	ClosingDate calendar.Date
+	Month       string
+	MonthBasis  MonthBasis
 	Version     StatementVersion
 }
 
