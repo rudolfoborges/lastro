@@ -10,6 +10,7 @@ data class CaseReading(
     val effect: String,
     val transactionStatus: String?,
     val category: String?,
+    val transactionId: String? = null,
 )
 
 data class ServerNotification(
@@ -21,7 +22,7 @@ data class ServerNotification(
 )
 
 object ServerNotifications {
-    const val LIMIT = 50
+    const val LIMIT = 100
 
     fun path(deviceId: String, limit: Int = LIMIT): String =
         "/v1/wallet/notifications?device_id=${URLEncoder.encode(deviceId, Charsets.UTF_8)}&limit=$limit"
@@ -49,6 +50,7 @@ object ServerNotifications {
             effect = interpretation.optString("effect"),
             transactionStatus = transaction?.optString("status")?.takeIf { it.isNotEmpty() },
             category = transaction?.optJSONObject("category")?.optString("label")?.takeIf { it.isNotEmpty() },
+            transactionId = interpretation.optString("transaction_id").takeIf { it.isNotEmpty() },
         )
     }
 

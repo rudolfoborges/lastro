@@ -62,6 +62,14 @@ class Settings(context: Context) {
         get() = prefs.getString("server_tracking", "").orEmpty()
         set(value) = prefs.edit { putString("server_tracking", value) }
 
+    var hideValues: Boolean
+        get() = prefs.getBoolean("hide_values", false)
+        set(value) = prefs.edit { putBoolean("hide_values", value) }
+
+    var protectPreview: Boolean
+        get() = prefs.getBoolean("protect_preview", true)
+        set(value) = prefs.edit { putBoolean("protect_preview", value) }
+
     var lastError: String
         get() = prefs.getString("last_error", "").orEmpty()
         set(value) = prefs.edit { putString("last_error", value) }

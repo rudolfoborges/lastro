@@ -17,7 +17,7 @@ class ServerNotificationsTest {
             {"notifications": [
               {"notification_id": "n1", "notification_key": "k1", "version": 2, "event": "updated",
                "posted_at": "2026-10-22T15:04:05Z", "received_at": "2026-10-22T15:04:25Z", "status": "interpreted",
-               "interpretation": {"event_type": "purchase_update", "effect": "updated",
+               "interpretation": {"event_type": "purchase_update", "effect": "updated", "transaction_id": "t1",
                  "transaction": {"status": "provisional", "category": {"code": "meals", "label": "Alimentação e refeições", "status": "suggested"}}}},
               {"notification_id": "n2", "notification_key": "k2", "version": 1, "event": "posted",
                "posted_at": "2026-10-22T16:00:00Z", "received_at": "2026-10-22T16:00:10Z", "status": "pending_interpretation"}
@@ -29,7 +29,7 @@ class ServerNotificationsTest {
 
         assertEquals(2, notifications.size)
         assertEquals(Instant.parse("2026-10-22T15:04:05Z"), notifications[0].postedAt)
-        assertEquals(CaseReading("purchase_update", "updated", "provisional", "Alimentação e refeições"), notifications[0].reading)
+        assertEquals(CaseReading("purchase_update", "updated", "provisional", "Alimentação e refeições", "t1"), notifications[0].reading)
         assertNull(notifications[1].reading)
     }
 
@@ -42,7 +42,7 @@ class ServerNotificationsTest {
     @Test
     fun theDeviceIdIsEncodedInThePath() {
         assertEquals(
-            "/v1/wallet/notifications?device_id=android-1a2b%3A3&limit=50",
+            "/v1/wallet/notifications?device_id=android-1a2b%3A3&limit=100",
             ServerNotifications.path("android-1a2b:3"),
         )
     }

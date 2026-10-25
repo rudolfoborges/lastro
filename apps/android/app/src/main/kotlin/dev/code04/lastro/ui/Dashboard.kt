@@ -27,6 +27,8 @@ data class StatusSnapshot(
     val lastHeartbeatAt: Long,
     val serverTracking: String,
     val lastError: String,
+    val hideValues: Boolean,
+    val protectPreview: Boolean,
 )
 
 sealed interface ServerFetch {
@@ -57,10 +59,12 @@ class Dashboard(context: Context) {
             lastHeartbeatAt = settings.lastHeartbeatAt,
             serverTracking = settings.serverTracking,
             lastError = settings.lastError,
+            hideValues = settings.hideValues,
+            protectPreview = settings.protectPreview,
         )
     }
 
-    fun captures(): List<CaptureRecord> = LocalStore.get(context).history(ServerNotifications.LIMIT)
+    fun captures(): List<CaptureRecord> = LocalStore.get(context).history(CAPTURES)
 
     suspend fun serverNotifications(): ServerFetch = withContext(Dispatchers.IO) {
         val settings = Settings(context)
@@ -70,11 +74,15 @@ class Dashboard(context: Context) {
             val response = LastroClient(settings.serverUrl, apiKey).get(ServerNotifications.path(settings.deviceId))
             when (response.status) {
                 in 200..299 -> ServerFetch.Done(ServerNotifications.parse(response.body))
-                401, 403 -> ServerFetch.Failed("Credencial recusada (${response.status}). Confira a chave em Ajustes.")
+                401, 403 -> ServerFetch.Failed("Credencial recusada (${response.status}). Confira a credencial em Configurações.")
                 else -> ServerFetch.Failed("Servidor respondeu ${response.status} ${response.errorCode.orEmpty()}".trim())
             }
         } catch (e: IOException) {
             ServerFetch.Failed("Falha de rede: ${e.message.orEmpty()}")
         }
+    }
+
+    private companion object {
+        const val CAPTURES = 300
     }
 }

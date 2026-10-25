@@ -11,6 +11,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.net.toUri
+import dev.code04.lastro.data.AppRepository
 import dev.code04.lastro.data.LocalStore
 import dev.code04.lastro.data.Settings
 import dev.code04.lastro.ui.theme.LastroTheme
@@ -23,15 +24,17 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        setRecentsScreenshotEnabled(!Settings(this).protectPreview)
         val dashboard = Dashboard(this)
+        val repository = AppRepository(this)
         setContent {
             LastroTheme {
-                LastroApp(dashboard = dashboard, actions = actions())
+                LastroApp(dashboard = dashboard, repository = repository, actions = actions(repository))
             }
         }
     }
 
-    private fun actions() = SettingsActions(
+    private fun actions(repository: AppRepository) = SettingsActions(
         openNotificationAccess = { startActivity(Intent(ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
         requestBatteryExemption = ::requestBatteryExemption,
         saveDestination = { url, token, allowlist ->
@@ -39,11 +42,13 @@ class MainActivity : ComponentActivity() {
             settings.serverUrl = url
             if (token.isNotBlank()) settings.saveApiKey(token)
             settings.allowlist = allowlist.split(',').toSet()
+            repository.forgetSaved()
             settings.lastError = ""
             refreshScheduling()
         },
         forgetApiKey = {
             Settings(this).forgetApiKey()
+            repository.forgetSaved()
             refreshScheduling()
         },
         setSending = { enabled ->
@@ -53,6 +58,11 @@ class MainActivity : ComponentActivity() {
         setPaused = { paused ->
             Settings(this).paused = paused
             refreshScheduling()
+        },
+        setHideValues = { hidden -> Settings(this).hideValues = hidden },
+        setProtectPreview = { protect ->
+            Settings(this).protectPreview = protect
+            setRecentsScreenshotEnabled(!protect)
         },
         exportCaptures = {
             val share = Intent(Intent.ACTION_SEND).apply {
