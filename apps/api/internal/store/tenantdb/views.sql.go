@@ -188,7 +188,7 @@ func (q *Queries) ListStatementsWithLatestVersion(ctx context.Context, accountID
 }
 
 const spendingRows = `-- name: SpendingRows :many
-SELECT t.id, t.description, t.merchant, t.amount_minor, t.currency, t.amount_basis, t.occurred_on,
+SELECT t.id, t.description, t.merchant, t.amount_minor, t.currency, t.amount_basis, t.occurred_on, t.occurred_at, t.created_at,
        t.nature, t.status, t.refund_of_id, t.installment_count, t.installment_amount_minor,
        pm.kind AS payment_kind, pm.card_last4,
        c.code AS category_code, c.label AS category_label, a.status AS category_status,
@@ -233,6 +233,8 @@ type SpendingRowsRow struct {
 	Currency               string
 	AmountBasis            string
 	OccurredOn             *time.Time
+	OccurredAt             *time.Time
+	CreatedAt              time.Time
 	Nature                 string
 	Status                 string
 	RefundOfID             *uuid.UUID
@@ -269,6 +271,8 @@ func (q *Queries) SpendingRows(ctx context.Context, arg SpendingRowsParams) ([]S
 			&i.Currency,
 			&i.AmountBasis,
 			&i.OccurredOn,
+			&i.OccurredAt,
+			&i.CreatedAt,
 			&i.Nature,
 			&i.Status,
 			&i.RefundOfID,

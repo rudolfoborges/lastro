@@ -212,6 +212,53 @@ func (q *Queries) MarkWalletNotificationRemoved(ctx context.Context, arg MarkWal
 	return i, err
 }
 
+const notificationVersionsOfObservations = `-- name: NotificationVersionsOfObservations :many
+SELECT v.observation_id, v.notification_id, v.version, v.event, v.posted_at, v.received_at
+FROM wallet_notification_versions v
+WHERE v.account_id = $1 AND v.observation_id = ANY($2::uuid[])
+`
+
+type NotificationVersionsOfObservationsParams struct {
+	AccountID      uuid.UUID
+	ObservationIds []uuid.UUID
+}
+
+type NotificationVersionsOfObservationsRow struct {
+	ObservationID  uuid.UUID
+	NotificationID uuid.UUID
+	Version        int32
+	Event          string
+	PostedAt       time.Time
+	ReceivedAt     time.Time
+}
+
+func (q *Queries) NotificationVersionsOfObservations(ctx context.Context, arg NotificationVersionsOfObservationsParams) ([]NotificationVersionsOfObservationsRow, error) {
+	rows, err := q.db.Query(ctx, notificationVersionsOfObservations, arg.AccountID, arg.ObservationIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotificationVersionsOfObservationsRow{}
+	for rows.Next() {
+		var i NotificationVersionsOfObservationsRow
+		if err := rows.Scan(
+			&i.ObservationID,
+			&i.NotificationID,
+			&i.Version,
+			&i.Event,
+			&i.PostedAt,
+			&i.ReceivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transactionStatuses = `-- name: TransactionStatuses :many
 SELECT id, status
 FROM transactions

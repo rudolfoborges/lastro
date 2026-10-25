@@ -97,3 +97,10 @@ FROM wallet_tracking_periods
 WHERE account_id = @account_id
 ORDER BY started_at DESC
 LIMIT 1;
+
+-- name: FirstTrackingStart :one
+SELECT started_at
+FROM wallet_tracking_periods
+WHERE account_id = @account_id
+ORDER BY started_at
+LIMIT 1;
