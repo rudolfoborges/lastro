@@ -52,7 +52,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | principal, juros, IOF, tarifa | `principal`, `interest`, `iof`, `fee` |
 | componente da cobrança (contido na parcela ou cobrado à parte) / composição não informada | `charge_component` (`included`) / `missing_breakdown` |
 | dúvida | `clarification` |
-| regra de classificação | `classification_rule` |
+| regra de classificação / condições / sugestão de regra aprovada por Rudolfo | `classification_rule` / `conditions` (`min_amount`, `max_amount`, `card_last4`, `payment_method`) / status `suggested` → `active` (`approve`) |
 | histórico de alterações | `revision` |
 | acompanhamento automático / cobertura / lacuna | `tracking` / `coverage` / `gap` |
 | período de acompanhamento / sinal de vida do celular / entrega atrasada | `tracking_period` / `heartbeat` / `late_delivery` |
