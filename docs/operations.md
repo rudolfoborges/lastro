@@ -107,5 +107,14 @@ To rehearse the procedure without touching production, create a separate throwaw
 
 ## Credentials
 
-- API keys: create and revoke them with an `admin` key through `/v1/api-keys`. Revocation is effective on the next request.
-- Invites: single use and expiring; create them only when someone is about to sign up.
+- **API keys:** create and revoke them with an `admin` key through `/v1/api-keys`. Revocation is effective on the next request. To rotate a key:
+  1. create the new one with the same scopes;
+  2. put it in its client (the phone app, or `mcp-stdio`);
+  3. revoke the old one.
+- **Lost admin key:** `lastro keys create --account <id> --name admin --scopes admin`. Revoking an `admin` key also revokes the OAuth grants it authorized.
+- **OAuth (Case on ChatGPT):** access tokens live 1 hour and refresh tokens 30 days. Revoke a grant with `POST /v1/oauth/grants/{id}/revoke`, and ChatGPT asks for authorization again.
+- **Export links:** they expire 15 minutes after `export_data`. Only their hash is stored.
+- **Invites:** single use and expiring; create them only when someone is about to sign up.
+- **No HMAC secret:** the phone authenticates with an API key scoped `wallet:ingest` (decided in M0). Rotating that key follows the steps above.
+
+The security review of the first delivery is in [`security-review.md`](security-review.md).
