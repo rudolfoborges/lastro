@@ -57,3 +57,8 @@ LIMIT @row_limit;
 SELECT id, status
 FROM transactions
 WHERE account_id = @account_id AND id = ANY(@transaction_ids::uuid[]);
+
+-- name: NotificationVersionsOfObservations :many
+SELECT v.observation_id, v.notification_id, v.version, v.event, v.posted_at, v.received_at
+FROM wallet_notification_versions v
+WHERE v.account_id = @account_id AND v.observation_id = ANY(@observation_ids::uuid[]);

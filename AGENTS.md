@@ -77,6 +77,10 @@ All communication with the user goes through Case, the user's AI assistant, over
 | resumo diário / horário / dia entregue | `daily_summary` / `time` (`HH:MM`) / `delivered` (`daily_summary_deliveries`) |
 | gráfico / série / rótulo / observações do gráfico | `chart` / `series` / `labels` / `notes` |
 | critério de aceite / suíte de aceitação | acceptance `criterion` / `acceptance` suite (`TestCriterionNN…`) |
+| visão geral do app / total bruto / total líquido / fora do total | `overview` / `gross` / `net` / `in_total` |
+| grupo do gráfico de categorias: categoria, outras, classificação provisória, sem categoria | `GroupKind`: `category`, `other`, `provisional_classification`, `uncategorized` |
+| cobertura do dia: completa, parcial, desconhecida, futura | `DayCoverage`: `complete`, `partial`, `unknown`, `future` |
+| comparação com o período equivalente anterior: sem histórico, lacuna, base zero | `comparison`: `no_history`, `coverage_gap`, `zero_base` |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

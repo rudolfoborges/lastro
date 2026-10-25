@@ -69,6 +69,9 @@ func NewHandler(deps Deps) http.Handler {
 		mux.HandleFunc("POST /v1/wallet/notifications", a.authenticated(accounts.ScopeWalletIngest, a.handleWalletNotification))
 		mux.HandleFunc("GET /v1/wallet/notifications", a.authenticated(accounts.ScopeWalletIngest, a.handleDeviceNotifications))
 		mux.HandleFunc("POST /v1/wallet/heartbeat", a.authenticated(accounts.ScopeWalletIngest, a.handleWalletHeartbeat))
+		mux.HandleFunc("GET /v1/overview", a.authenticated(accounts.ScopeExpensesRead, a.handleOverview))
+		mux.HandleFunc("GET /v1/expenses", a.authenticated(accounts.ScopeExpensesRead, a.handleListExpenses))
+		mux.HandleFunc("GET /v1/expenses/{id}", a.authenticated(accounts.ScopeExpensesRead, a.handleExpenseDetail))
 	}
 
 	if deps.MCP != nil {

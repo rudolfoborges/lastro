@@ -100,6 +100,9 @@ Configuration comes only from environment variables. The process refuses to boot
 | `POST /v1/wallet/notifications` | `wallet:ingest` | Receives one notification event from the Android app (see [Wallet notifications](#wallet-notifications)) |
 | `GET /v1/wallet/notifications` | `wallet:ingest` | The latest notification versions of one device and what Case did with each (see [What the app sees](#what-the-app-sees)) |
 | `POST /v1/wallet/heartbeat` | `wallet:ingest` | Sign of life from the Android app with its version and permissions; answers the tracking state (see [Coverage](#coverage)) |
+| `GET /v1/overview` | `expenses:read` | The app's month dashboard: totals, categories, days, comparison and coverage (see [What the app reads](#what-the-app-reads)) |
+| `GET /v1/expenses` | `expenses:read` | The expenses that compose a total, under the same rules, with filters and pages |
+| `GET /v1/expenses/{id}` | `expenses:read` | One expense explained: its status apart from its category's, dates and installments, and the notifications behind it |
 
 Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
 
@@ -435,6 +438,7 @@ The same purchase may arrive from the conversation, from Google Wallet and from 
       "interpretation": {
         "event_type": "purchase",
         "effect": "created",
+        "transaction_id": "…",
         "transaction": {
           "status": "provisional",
           "category": { "code": "meals", "label": "Alimentação e refeições", "status": "suggested" }
@@ -447,6 +451,58 @@ The same purchase may arrive from the conversation, from Google Wallet and from 
 
 - `status` is `pending_interpretation` until Case submits a reading, then `interpreted` with the latest reading (`event_type`, `effect`) and the current status and category of the transaction it touched.
 - The text never comes back: the app already keeps it, and a leaked device key reveals no more than which notifications Case processed and how they were classified.
+- `transaction_id` lets an app that also holds `expenses:read` open the expense the notification became.
+
+### What the app reads
+
+The Android app only reads: these routes never create, change or confirm anything. The key the app uses needs `expenses:read` besides `wallet:ingest`. Every total follows one rule, so a list opened from a chart adds up to the bar it came from:
+
+- **Gross total**: confirmed expenses whose full amount is known, by purchase date, in one currency (`currency`, `BRL` by default; currencies are never added). Refunds count by their own date and only make the net; provisional and pending expenses, and purchases known only by installment (`unknown_total`), stay apart.
+- **Categories**: the gross total split into exclusive groups: the five largest concluded categories, `other` with the remaining concluded ones (only when two or more remain), `provisional_classification` (suggested by Case) and `uncategorized`. `share_basis_points` is each group over the gross total (`3410` = 34,10%), absent when the total is zero. Each group carries the `filter` that opens its list.
+- **Days**: one entry per day of the month with the gross and the refunds of the day and its coverage: `complete`, `partial` (the phone went silent or the tracking was paused for part of it), `unknown` (no coverage at all) or `future`.
+- **Comparison**: the same days of the month before (days 1 to today for a month in progress; whole months otherwise). It is `available` only when the tracking already covered the earlier period (`no_history` otherwise) and neither period went 24 hours or more uncovered (`coverage_gap`); a zero base keeps the difference without a percentage (`zero_base`).
+- **Coverage**: the limitations of the period in Portuguese, the tracking state, the inbox and the devices.
+
+`GET /v1/overview?month=2026-10` (the current month so far by default; never a future month):
+
+```json
+{
+  "generated_at": "2026-10-25T11:14:00Z",
+  "period": { "month": "2026-10", "from": "2026-10-01", "to": "2026-10-25", "month_end": "2026-10-31", "in_progress": true, "basis": "purchase_date", "timezone": "America/Sao_Paulo" },
+  "currency": "BRL",
+  "currencies": ["BRL"],
+  "totals": {
+    "gross": { "amount": { "minor": 376200, "currency": "BRL", "formatted": "R$ 3.762,00" }, "count": 46 },
+    "average": { "minor": 8178, "currency": "BRL", "formatted": "R$ 81,78" },
+    "refunds": { "amount": { "minor": 8990, "currency": "BRL", "formatted": "R$ 89,90" }, "count": 2 },
+    "net": { "minor": 367210, "currency": "BRL", "formatted": "R$ 3.672,10" },
+    "provisional": { "amount": { "minor": 31260, "currency": "BRL", "formatted": "R$ 312,60" }, "count": 4 },
+    "pending": { "amount": { "minor": 0, "currency": "BRL", "formatted": "R$ 0,00" }, "count": 0 },
+    "unknown_total": 1
+  },
+  "categories": [
+    {
+      "kind": "category", "key": "groceries", "label": "Mercado", "categories": 1,
+      "gross": { "amount": { "minor": 128450, "currency": "BRL", "formatted": "R$ 1.284,50" }, "count": 9 },
+      "share_basis_points": 3414,
+      "filter": { "from": ["2026-10-01"], "to": ["2026-10-25"], "currency": ["BRL"], "status": ["confirmed"], "nature": ["expense"], "classification": ["confirmed"], "category": ["groceries"] }
+    }
+  ],
+  "days": [{ "date": "2026-10-01", "gross": { "amount": { "minor": 12640, "currency": "BRL", "formatted": "R$ 126,40" }, "count": 2 }, "refunds": { "amount": { "minor": 0, "currency": "BRL", "formatted": "R$ 0,00" }, "count": 0 }, "coverage": "complete" }],
+  "comparison": {
+    "available": true,
+    "current": { "from": "2026-10-01", "to": "2026-10-25", "gross": { "minor": 376200, "currency": "BRL", "formatted": "R$ 3.762,00" } },
+    "previous": { "from": "2026-09-01", "to": "2026-09-25", "gross": { "minor": 341840, "currency": "BRL", "formatted": "R$ 3.418,40" } },
+    "difference": { "minor": 34360, "currency": "BRL", "formatted": "R$ 343,60" },
+    "percent_basis_points": 1005
+  },
+  "coverage": { "complete": false, "limitations": ["2 notificação(ões) ainda não foram interpretadas pela Case e não entram nos totais."], "tracking": { "state": "active", "since": "2026-10-24T13:00:00Z" }, "inbox": { "pending": 2 }, "devices": [] }
+}
+```
+
+`GET /v1/expenses` takes `month` or `from` and `to` (up to 400 days), `currency`, and the repeatable (or comma-separated) filters `status` (`confirmed`, `provisional`, `pending_clarification`), `nature` (`expense`, `refund`), `category` (codes), `classification` (`confirmed`, `suggested`, `missing`) and `q` (description or store, without case or accents). It answers the totals of everything that matches, the `matching` count, one page of `items` (newest first; `limit` up to 200, 50 by default, and `offset`, with `next_offset` while more remain), and the gross of each day in the page. Each item says whether it is `in_total`, its `classification` apart from its `status`, and `amount_basis` `installment` when only the installment is known.
+
+`GET /v1/expenses/{id}` adds the installment plan (charged, known and estimated installments), the notifications behind the expense (`notification_id`, `version`, `posted_at`), whether a statement line confirms it, its refunds, the open questions and the last change (`at`, `author`). The text of notifications and conversations never comes back.
 
 ### Coverage
 

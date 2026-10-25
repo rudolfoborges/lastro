@@ -38,6 +38,21 @@ func (q *Queries) EndTrackingPeriod(ctx context.Context, arg EndTrackingPeriodPa
 	return i, err
 }
 
+const firstTrackingStart = `-- name: FirstTrackingStart :one
+SELECT started_at
+FROM wallet_tracking_periods
+WHERE account_id = $1
+ORDER BY started_at
+LIMIT 1
+`
+
+func (q *Queries) FirstTrackingStart(ctx context.Context, accountID uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, firstTrackingStart, accountID)
+	var started_at time.Time
+	err := row.Scan(&started_at)
+	return started_at, err
+}
+
 const heartbeatTimesBetween = `-- name: HeartbeatTimesBetween :many
 SELECT received_at
 FROM wallet_heartbeats

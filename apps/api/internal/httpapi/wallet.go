@@ -151,9 +151,10 @@ type deviceNotification struct {
 }
 
 type appliedInterpretation struct {
-	EventType   ledger.EventType            `json:"event_type"`
-	Effect      ledger.InterpretationEffect `json:"effect"`
-	Transaction *transactionState           `json:"transaction,omitempty"`
+	EventType     ledger.EventType            `json:"event_type"`
+	Effect        ledger.InterpretationEffect `json:"effect"`
+	TransactionID *uuid.UUID                  `json:"transaction_id,omitempty"`
+	Transaction   *transactionState           `json:"transaction,omitempty"`
 }
 
 type transactionState struct {
@@ -210,7 +211,7 @@ func toDeviceNotification(n ledger.DeviceNotification) deviceNotification {
 		return out
 	}
 	out.Status = "interpreted"
-	out.Interpretation = &appliedInterpretation{EventType: n.Interpretation.EventType, Effect: n.Interpretation.Effect}
+	out.Interpretation = &appliedInterpretation{EventType: n.Interpretation.EventType, Effect: n.Interpretation.Effect, TransactionID: n.Interpretation.TransactionID}
 	if n.Transaction != nil {
 		out.Interpretation.Transaction = &transactionState{Status: n.Transaction.Status}
 		if c := n.Transaction.Category; c != nil {
