@@ -84,6 +84,17 @@ jobs:
         if: github.event_name != 'schedule'
         run: pnpm nx affected -t lint test build sqlc-check --output-style=static
 
+      - name: Check the PRD acceptance criteria
+        if: github.event_name != 'schedule'
+        run: pnpm nx run api:acceptance --output-style=static
+
+      - name: Publish the acceptance report
+        if: always() && github.event_name != 'schedule'
+        run: |
+          if [ -f dist/acceptance/report.md ]; then
+            cat dist/acceptance/report.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
       - name: Scan dependencies for known vulnerabilities
         run: pnpm nx run-many -t vulncheck --output-style=static
 

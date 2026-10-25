@@ -53,6 +53,13 @@
         "command": "go test -race ./..."
       }
     },
+    "acceptance": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go test -count=1 -json -run '^TestCriterion' ./internal/acceptance | go run ./cmd/acceptance-report -out ../../dist/acceptance/report.md"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "cache": true,

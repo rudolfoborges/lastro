@@ -74,6 +74,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | efeito da interpretação: nenhum, criou, vinculou, atualizou, anulou, criou estorno, desfeito | `effect`: `none`, `created`, `linked`, `updated`, `voided`, `refund_created`, `undone` |
 | dispositivo / versão da notificação / caixa de entrada | `wallet_device` / `wallet_notification_versions` / `inbox` |
 | avaliação da Case / conta de avaliação / taxa de acerto por fluxo | `case_evaluation` / sandbox account (`sandbox_of`) / `flows` (`passed` / `total`) |
+| critério de aceite / suíte de aceitação | acceptance `criterion` / `acceptance` suite (`TestCriterionNN…`) |
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

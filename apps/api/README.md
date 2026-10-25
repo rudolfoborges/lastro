@@ -17,6 +17,7 @@ Run every task through Nx from the repository root:
 | `pnpm nx run api:serve` | Runs the API with `go run`, loading `apps/api/.env` |
 | `pnpm nx run api:build` | Builds the `lastro` binary into `dist/apps/api/` |
 | `pnpm nx run api:test` | Runs the tests with the race detector |
+| `pnpm nx run api:acceptance` | Runs the PRD acceptance suite and writes `dist/acceptance/report.md` (runs in CI) |
 | `pnpm nx run api:lint` | Runs golangci-lint with `.golangci.yml` |
 | `pnpm nx run api:tidy` | Runs `go mod tidy` |
 | `pnpm nx run api:vulncheck` | Runs `govulncheck` against the code and the Go toolchain |
@@ -134,6 +135,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | Path | Contents |
 | --- | --- |
 | `cmd/lastro` | Entry point |
+| `cmd/acceptance-report` | Turns `go test -json` of the acceptance suite into the criteria report |
 | `internal/cli` | Subcommands |
 | `internal/accounts` | Accounts, invites, API keys, scopes, account settings and request audit |
 | `internal/calendar` | Local dates, date precision and source, `now`/`today`/`yesterday` and time zones |
@@ -147,6 +149,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/logging` | `log/slog` setup |
 | `internal/taxonomy` | The default categories every account starts with |
 | `internal/evaluation` | Case evaluation: sandbox accounts, the synthetic scenarios and their grading |
+| `internal/acceptance` | End-to-end tests of the 14 PRD acceptance criteria and their list |
 | `internal/store` | Postgres pool and the platform and tenant transactions |
 | `internal/store/migrations` | SQL migrations embedded in the binary and the goose runner |
 | `internal/store/queries/{platform,tenant}` | SQL queries compiled by sqlc |
@@ -455,6 +458,14 @@ Every write submitted by a client carries a key chosen by the client (for Case, 
 - if the work fails, the transaction rolls back and no key is recorded, so the retry runs from scratch.
 
 A key is therefore only ever stored for work that was committed, and a response is never sent for a write that did not happen. Keys are kept: the table has no `UPDATE` or `DELETE` for the application role.
+
+### Acceptance suite
+
+`internal/acceptance` (#49) has one end-to-end test per PRD §12 criterion, named by its number (`TestCriterion01…` to `TestCriterion14…`). Each test runs the real HTTP handler on a migrated Postgres: Case is an MCP client over Streamable HTTP with its API key, the phone posts to the Wallet webhook with its `wallet:ingest` key, and statements arrive as the reading Case would submit after reading the PDF.
+
+- **Criterion 8** depends on Case's classification. The suite checks that the categories keep convenience apart, and that the Case evaluation (#56) grades it: snacks classified as convenience pass, snacks classified as a meal fail.
+- **Report:** `api:acceptance` pipes `go test -json` into `cmd/acceptance-report`, which links each criterion to its test and status and fails when a criterion is missing, skipped or failing. CI adds the table to the run summary.
+- The older `TestAcceptanceCriterion…` tests in `ledger` and `mcpserver` stay as unit checks of the same rules.
 
 ### Integration tests
 
