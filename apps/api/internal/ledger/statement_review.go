@@ -121,8 +121,12 @@ func (s *Service) StatementLineSource(ctx context.Context, accountID, statementI
 		if err != nil {
 			return fmt.Errorf("statement line: %w", err)
 		}
+		basis, err := t.monthBasis()
+		if err != nil {
+			return err
+		}
 		source = LineSource{
-			Statement:     toStatement(statement, version),
+			Statement:     t.statementOf(statement, version, basis),
 			Position:      int(row.Position),
 			Kind:          StatementItemKind(row.Kind),
 			Amount:        money.Money{Minor: row.AmountMinor, Currency: version.Currency},
@@ -145,6 +149,10 @@ func (s *Service) TransactionLineSources(ctx context.Context, accountID, transac
 		if err != nil {
 			return fmt.Errorf("statement lines of transaction: %w", err)
 		}
+		basis, err := t.monthBasis()
+		if err != nil {
+			return err
+		}
 		for _, row := range rows {
 			statement, err := t.q.GetStatement(t.ctx, tenantdb.GetStatementParams{AccountID: t.accountID, ID: row.StatementID})
 			if err != nil {
@@ -155,7 +163,7 @@ func (s *Service) TransactionLineSources(ctx context.Context, accountID, transac
 				return fmt.Errorf("statement version %s: %w", row.StatementVersionID, err)
 			}
 			sources = append(sources, LineSource{
-				Statement:     toStatement(statement, version),
+				Statement:     t.statementOf(statement, version, basis),
 				Position:      int(row.Position),
 				Kind:          StatementItemKind(row.Kind),
 				Amount:        money.Money{Minor: row.AmountMinor, Currency: version.Currency},
@@ -207,7 +215,11 @@ func (t *tx) review(statement tenantdb.Statement, version tenantdb.StatementVers
 	if err != nil {
 		return StatementReview{}, fmt.Errorf("list statement clarifications: %w", err)
 	}
-	review := StatementReview{Statement: toStatement(statement, version), Composition: composition}
+	basis, err := t.monthBasis()
+	if err != nil {
+		return StatementReview{}, err
+	}
+	review := StatementReview{Statement: t.statementOf(statement, version, basis), Composition: composition}
 	doubts := 0
 	for _, row := range rows {
 		clarification, err := t.withTarget(row)
@@ -347,4 +359,25 @@ func pendingOf(review StatementReview, doubts int) []ReviewPending {
 		pending = append(pending, ReviewPending{Kind: PendingClarifications, Description: fmt.Sprintf("%d dúvida(s) em aberto nos lançamentos desta fatura (categoria, finalidade ou correspondência). Elas não mudam o total.", others)})
 	}
 	return pending
+}
+
+func (t *tx) monthBasis() (MonthBasis, error) {
+	account, err := t.q.GetAccount(t.ctx, t.accountID)
+	if err != nil {
+		return "", fmt.Errorf("get account: %w", err)
+	}
+	return MonthBasis(account.StatementMonth), nil
+}
+
+// statementOf names the month a statement belongs to in monthly comparisons,
+// by its closing or due date as the account chose (#44).
+func (t *tx) statementOf(row tenantdb.Statement, version tenantdb.StatementVersion, basis MonthBasis) Statement {
+	statement := toStatement(row, version)
+	statement.MonthBasis = basis
+	reference := statement.ClosingDate
+	if basis == MonthByDue {
+		reference = statement.Version.DueDate
+	}
+	statement.Month = reference.Time().Format("2006-01")
+	return statement
 }
