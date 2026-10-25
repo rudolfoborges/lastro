@@ -87,9 +87,10 @@ func (e *env) sessionWithLogs(principal accounts.Principal) (*mcp.ClientSession,
 	e.t.Helper()
 	logs := &bytes.Buffer{}
 	server := mcpserver.New(mcpserver.Deps{
-		Accounts: e.accounts,
-		Ledger:   e.ledger,
-		Logger:   slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Accounts:    e.accounts,
+		Ledger:      e.ledger,
+		Evaluations: e.evaluations,
+		Logger:      slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	}, mcpserver.WithPrincipal(principal), mcpserver.WithClock(func() time.Time { return clock }))
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.MCP().Connect(e.t.Context(), serverTransport, nil)

@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/evaluation"
 	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/mcpserver"
@@ -28,6 +29,8 @@ type env struct {
 	accounts    *accounts.Service
 	ledger      *ledger.Service
 	exports     *export.Service
+	evaluations *evaluation.Service
+	now         time.Time
 }
 
 func newEnv(t *testing.T) *env {
@@ -38,7 +41,8 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	return &env{t: t, databaseURL: databaseURL, accounts: accounts.NewService(s), ledger: ledger.NewService(s), exports: export.NewService(s)}
+	l := ledger.NewService(s)
+	return &env{t: t, databaseURL: databaseURL, accounts: accounts.NewService(s), ledger: l, exports: export.NewService(s), evaluations: evaluation.NewService(s, l), now: clock}
 }
 
 func (e *env) principal(name string, scopes ...string) accounts.Principal {
@@ -68,9 +72,10 @@ func (e *env) session(principal accounts.Principal) *mcp.ClientSession {
 		Accounts:      e.accounts,
 		Ledger:        e.ledger,
 		Exports:       e.exports,
+		Evaluations:   e.evaluations,
 		PublicBaseURL: "https://lastro.test",
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}, mcpserver.WithPrincipal(principal), mcpserver.WithClock(func() time.Time { return clock }))
+	}, mcpserver.WithPrincipal(principal), mcpserver.WithClock(func() time.Time { return e.now }))
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.MCP().Connect(e.t.Context(), serverTransport, nil)
 	if err != nil {

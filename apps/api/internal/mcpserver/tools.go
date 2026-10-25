@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/evaluation"
 	"github.com/rudolfoborges/lastro/apps/api/internal/idempotency"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/money"
@@ -109,6 +111,13 @@ func addTool[In, Out any](s *Server, spec toolSpec, run func(ctx context.Context
 		if !ok {
 			return nil, zero, &ToolError{Outcome: OutcomeFailed, Code: "unauthorized", Message: "the call carries no valid credential"}
 		}
+		if s.deps.Evaluations != nil && !slices.Contains(evaluationTools, spec.name) {
+			routed, err := s.deps.Evaluations.Route(ctx, principal, s.now())
+			if err != nil {
+				return nil, zero, s.toToolError(ctx, spec.name, err)
+			}
+			principal = routed
+		}
 		c := call{principal: principal, conversation: conversationOf(req), receivedAt: s.now()}
 		var out Out
 		var toolErr *ToolError
@@ -179,6 +188,8 @@ func (s *Server) toToolError(ctx context.Context, tool string, err error) *ToolE
 		return &ToolError{Outcome: OutcomeFailed, Code: "clarification_closed", Message: err.Error()}
 	case errors.Is(err, ledger.ErrObservationClaimed):
 		return &ToolError{Outcome: OutcomeFailed, Code: "evidence_conflict", Message: err.Error()}
+	case errors.Is(err, evaluation.ErrExpired):
+		return &ToolError{Outcome: OutcomeFailed, Code: "evaluation_expired", Message: err.Error()}
 	default:
 		s.deps.Logger.ErrorContext(ctx, "tool failed", slog.String("tool", tool), slog.String("error", err.Error()))
 		return &ToolError{Outcome: OutcomeFailed, Code: "internal_error", Message: "Lastro failed and nothing was recorded; retry the same call"}

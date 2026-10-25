@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/evaluation"
 	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 )
@@ -30,12 +31,13 @@ const serverInstructions = `Lastro stores, validates and computes Rudolfo's expe
 - Never compute totals yourself; use Lastro's query tools.
 - Statement PDFs never go to Lastro: read them yourself and submit only the structured reading.
 - Lastro never decides that records from different sources are the same purchase: you do, from the candidates it explains, asking Rudolfo when in doubt.
-Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, "matching" before linking records of the same purchase, and "queries" before answering questions about totals.`
+Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, "matching" before linking records of the same purchase, "queries" before answering questions about totals, and "evaluation" before start_case_evaluation.`
 
 type Deps struct {
 	Accounts      *accounts.Service
 	Ledger        *ledger.Service
 	Exports       *export.Service
+	Evaluations   *evaluation.Service
 	PublicBaseURL string
 	Logger        *slog.Logger
 }
@@ -81,6 +83,9 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerQueries()
 	if deps.Exports != nil {
 		s.registerExport()
+	}
+	if deps.Evaluations != nil {
+		s.registerEvaluation()
 	}
 	return s
 }

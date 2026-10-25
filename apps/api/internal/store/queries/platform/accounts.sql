@@ -6,4 +6,5 @@ RETURNING *;
 -- name: ListAccounts :many
 SELECT *
 FROM accounts
+WHERE sandbox_of IS NULL
 ORDER BY created_at, id;
