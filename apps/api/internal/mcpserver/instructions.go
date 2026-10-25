@@ -25,6 +25,7 @@ var topics = []topic{
 	{name: "notifications", prompt: "process_pending_notifications", description: "How to interpret the Google Wallet notifications waiting in the inbox"},
 	{name: "statements", prompt: "process_statement", description: "How to read a credit card statement PDF and submit the reading"},
 	{name: "matching", prompt: "match_sources", description: "How to decide that records from the conversation, Google Wallet and statements are the same purchase"},
+	{name: "queries", prompt: "answer_queries", description: "Which query tool answers each question about spending, statements and installments, and how to relay it"},
 }
 
 type GetInstructionsInput struct {
@@ -44,7 +45,7 @@ func (s *Server) registerInstructions() {
 	addTool(s, toolSpec{
 		name:        "get_instructions",
 		title:       "Read a Lastro procedure",
-		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses), classification (categories and purpose), notifications (the Google Wallet inbox), statements (credit card statement PDFs) or matching (records of the same purchase in different sources). Read conversation before recording, classification before classifying, notifications before processing the inbox, statements before submitting a statement and matching before linking records.",
+		description: "Returns one of Case's procedures for working with Lastro, in Markdown: conversation (recording and correcting expenses), classification (categories and purpose), notifications (the Google Wallet inbox), statements (credit card statement PDFs), matching (records of the same purchase in different sources) or queries (answering questions about spending). Read conversation before recording, classification before classifying, notifications before processing the inbox, statements before submitting a statement, matching before linking records and queries before answering about totals.",
 		readOnly:    true,
 		idempotent:  true,
 		enums:       map[string][]any{"topic": names},

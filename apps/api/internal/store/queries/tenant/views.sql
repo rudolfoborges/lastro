@@ -73,3 +73,23 @@ JOIN LATERAL (
 ) v ON true
 WHERE s.account_id = @account_id
 ORDER BY s.closing_date, s.card_last4;
+
+-- name: FindStatementsInMonth :many
+SELECT s.*
+FROM statements s
+JOIN LATERAL (
+    SELECT sv.due_date
+    FROM statement_versions sv
+    WHERE sv.account_id = s.account_id AND sv.statement_id = s.id
+    ORDER BY sv.version DESC
+    LIMIT 1
+) v ON true
+WHERE s.account_id = @account_id
+  AND to_char(CASE WHEN @by_due::boolean THEN v.due_date ELSE s.closing_date END, 'YYYY-MM') = @month::text
+  AND (sqlc.narg(card_last4)::text IS NULL OR s.card_last4 = sqlc.narg(card_last4)::text)
+ORDER BY s.closing_date;
+
+-- name: CountOpenQuestionsOf :one
+SELECT count(*)::int
+FROM clarifications
+WHERE account_id = @account_id AND status = 'open' AND transaction_id = ANY(@transaction_ids::uuid[]);

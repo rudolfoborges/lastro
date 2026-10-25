@@ -74,6 +74,7 @@ Rules that always apply:
 - Before talking about the spending of a period, call get_coverage_status and tell Rudolfo every limitation it lists. Turn automatic tracking on or off with set_tracking only when he asks.
 - At the start of each conversation, call list_pending_notifications. If anything is pending, read get_instructions topic "notifications" and process the Google Wallet inbox before answering. Never record a notification with record_expense.
 - When Rudolfo sends a credit card statement PDF, read get_instructions topic "statements", read every page yourself and send only the structured reading with submit_statement_extraction (first with dry_run true). Never send the PDF to Lastro and never record statement lines with record_expense. "O que falta conferir nesta fatura?" is answered by get_statement_review.
+- Before answering about spending, statements, installments or Pix parcelado, read get_instructions topic "queries" and use its tools. Say which view and period you used, keep confirmed, provisional and pending apart, and relay the coverage limitations.
 - Never add up amounts yourself.
 ```
 
@@ -230,3 +231,12 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Sempre que for na Padaria X, é café da manhã" makes Case call `create_classification_rule`; a later purchase there is classified with `category_rule_id` and shows origin `rule`.
 - [ ] A one-off "essa foi mercado" changes only that purchase: no rule appears in `list_classification_rules`.
 - [ ] A category Rudolfo confirmed stays when Case or a rule suggests another; the difference becomes a question.
+
+### Queries (M5)
+
+- [ ] "Quanto gastei no mercado até agora?" answers this month's groceries with confirmed and provisional apart and says the period.
+- [ ] "Quais foram os gastos da semana?" answers by day.
+- [ ] "Quanto está sendo cobrado nesta fatura?" gives the total, the composition and whether there is evidence of payment.
+- [ ] "Quanto estou gastando com Pix parcelado e quanto disso são juros?" separates the interest the statements detailed from what came without detail.
+- [ ] "Quanto ainda tenho de parcelas futuras?" separates known from estimated and says how old the information is.
+- [ ] A question about a period before the tracking started is answered with the limitation, never as "no spending".

@@ -347,7 +347,7 @@ The principal, interest, IOF and fee Case reads on a statement line are stored i
 
 ### Views
 
-`ledger/views.go` (#45) answers the four views of PRD §5. Each one has its own function and never adds values of another view; the MCP query tools of #46 expose them.
+`ledger/views.go` (#45) answers the four views of PRD §5. Each one has its own function and never adds values of another view. The MCP query tools (#46) expose them with a premise, the period, totals per currency, open questions, the transaction IDs and a pt-BR `summary`. `query_spending` also adds the coverage limitations of the period (#30), checked in 92-day chunks up to today, so an empty period with gaps is never reported as no spending (criterion 11).
 
 - **Purchases** (`Purchases`): expenses and refunds by purchase date, in the account time zone. Voided and merged records are excluded.
   - **Totals:** one entry per currency, never converted. Each splits confirmed, provisional and pending (`pending_clarification`, an unresolved overlap) purchases, each with the IDs that compose it.
@@ -467,13 +467,13 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 - **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes, `statements:write` for statements) and refuses the call with a `forbidden` tool error otherwise.
 - **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
-- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`) for other clients. The server `instructions` summarize the rules.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`, `answer_queries`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
 - **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`, `queries`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -494,6 +494,10 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `create_classification_rule` | `expenses:write` | Saves a rule Rudolfo asked for (store → category, purpose), never from a one-off correction |
 | `list_classification_rules` | `expenses:read` | Rudolfo's active (or archived) rules, for Case to apply |
 | `archive_classification_rule` | `expenses:write` | Stops a rule; categories it decided stay |
+| `query_spending` | `expenses:read` | Purchases of a period by purchase date: confirmed, provisional and pending apart, refunds and net, per currency, with groups, filters, IDs, open questions and coverage limitations |
+| `get_statement_summary` | `expenses:read` | What a statement charges: composition, categories, installments by modality, payment evidence and review |
+| `get_future_commitments` | `expenses:read` | Installments still to come, known and estimated, by month, with the date of the information |
+| `get_pix_installment_summary` | `expenses:read` | Pix installment plans: charged, interest and fees detailed, still to come |
 | `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
 | `confirm_match` | `expenses:write` | Merges two open transactions of the same purchase; the other one is kept as `merged` |
 | `reject_match` | `expenses:write` | Records that two transactions are different purchases, so they are never offered again |
