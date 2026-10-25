@@ -250,12 +250,12 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 
 - Referência dos comparativos mensais de faturas: o mês do **fechamento**, que acompanha o período de consumo do ciclo (decidido por Rudolfo em 24/10/2026, #44).
 - Avaliação da Case: a própria Case roda a avaliação quando Rudolfo pede, numa **conta de avaliação** separada por até duas horas, com cenários sintéticos fixos; o Lastro corrige e devolve a taxa de acerto por fluxo e os erros. Nada da avaliação entra nos registros de Rudolfo (#56).
+- Migração dos registros existentes: **não haverá migração** (decidido por Rudolfo em 24/10/2026, #50). O Lastro começa pela fatura de outubro de 2026 e pelos registros feitos a partir dela; o controle anterior fica apenas como consulta histórica, sem operação em paralelo. O critério de virada é um ciclo de fatura conferido sem divergência, cumprido pela fatura de outubro de 2026, conferida em 24/10/2026, data em que o Lastro passou a ser a fonte principal. A origem `import` continua reservada, sem ferramenta, para o caso de uma migração ser pedida no futuro.
 
 ### Decisões que ainda precisam ser tomadas
 
 - Horário do resumo diário.
 - Por quanto tempo manter os documentos originais.
 - Quais compras e informações são efetivamente cobertas pelas notificações no aparelho de Rudolfo.
-- Quando migrar os registros existentes e passar a considerar o novo controle como fonte principal.
 
-Até a migração ser conferida, o controle atual não deve ser abandonado silenciosamente. A primeira versão estará pronta quando os três meios de entrada funcionarem e Rudolfo conseguir entender seus gastos, conferir a fatura e resolver dúvidas sem duplicação ou perda de informação.
+A virada para o Lastro foi explícita (#50), nunca silenciosa. A primeira versão estará pronta quando os três meios de entrada funcionarem e Rudolfo conseguir entender seus gastos, conferir a fatura e resolver dúvidas sem duplicação ou perda de informação.
