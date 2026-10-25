@@ -75,6 +75,7 @@ All communication with the user goes through Case, the user's AI assistant, over
 | dispositivo / versão da notificação / caixa de entrada | `wallet_device` / `wallet_notification_versions` / `inbox` |
 | avaliação da Case / conta de avaliação / taxa de acerto por fluxo | `case_evaluation` / sandbox account (`sandbox_of`) / `flows` (`passed` / `total`) |
 | resumo diário / horário / dia entregue | `daily_summary` / `time` (`HH:MM`) / `delivered` (`daily_summary_deliveries`) |
+| gráfico / série / rótulo / observações do gráfico | `chart` / `series` / `labels` / `notes` |
 | critério de aceite / suíte de aceitação | acceptance `criterion` / `acceptance` suite (`TestCriterionNN…`) |
 
 <!-- nx configuration start-->

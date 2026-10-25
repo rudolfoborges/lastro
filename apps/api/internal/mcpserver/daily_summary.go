@@ -45,6 +45,7 @@ type DailySummaryOutput struct {
 	Categories    []PurchaseGroupOutput      `json:"categories,omitempty"`
 	OpenQuestions int                        `json:"open_questions"`
 	Coverage      *CoverageNoteOutput        `json:"coverage,omitempty"`
+	Charts        []ChartOutput              `json:"charts,omitempty" jsonschema:"the categories of the day laid out for you to draw, when the summary goes with a chart"`
 	Summary       string                     `json:"summary" jsonschema:"the message to send Rudolfo, in Portuguese"`
 }
 
@@ -151,7 +152,7 @@ func (s *Server) dailySummary(ctx context.Context, c call, in DailySummaryInput)
 	if err != nil {
 		return DailySummaryOutput{}, err
 	}
-	out.Totals, out.Categories, out.OpenQuestions, out.Coverage = spending.Totals, spending.Groups, spending.OpenQuestions, &spending.Coverage
+	out.Totals, out.Categories, out.OpenQuestions, out.Coverage, out.Charts = spending.Totals, spending.Groups, spending.OpenQuestions, &spending.Coverage, spending.Charts
 	out.Summary = dailySummaryText(spending, day)
 	return out, nil
 }

@@ -254,6 +254,11 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] A second run on the same day sends nothing (`delivered`).
 - [ ] "Para de mandar o resumo" turns it off; the next run sends nothing.
 
+### Charts (M6)
+
+- [ ] "Me mostra os gastos do mês por categoria num gráfico" makes Case draw the chart of `query_spending` with the title, the period and the notes, and the bars match the totals of the answer.
+- [ ] "E a fatura?" draws the statement chart by category; payments and credits are not in it.
+
 ### Case evaluation (M5)
 
 - [ ] "Avalie como você usa o Lastro" makes Case read `get_instructions` (evaluation), call `start_case_evaluation`, handle the seven messages, the inbox and the statement without asking anything, and call `finish_case_evaluation`.
