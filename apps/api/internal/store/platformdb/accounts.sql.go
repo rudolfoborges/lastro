@@ -14,7 +14,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (id, name)
 VALUES ($1, $2)
-RETURNING id, name, created_at, timezone, statement_month, sandbox_of
+RETURNING id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
 `
 
 type CreateAccountParams struct {
@@ -32,12 +32,14 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Timezone,
 		&i.StatementMonth,
 		&i.SandboxOf,
+		&i.DailySummaryEnabled,
+		&i.DailySummaryTime,
 	)
 	return i, err
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, name, created_at, timezone, statement_month, sandbox_of
+SELECT id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
 FROM accounts
 WHERE sandbox_of IS NULL
 ORDER BY created_at, id
@@ -59,6 +61,8 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.Timezone,
 			&i.StatementMonth,
 			&i.SandboxOf,
+			&i.DailySummaryEnabled,
+			&i.DailySummaryTime,
 		); err != nil {
 			return nil, err
 		}

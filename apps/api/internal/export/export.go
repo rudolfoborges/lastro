@@ -62,6 +62,7 @@ var tables = []string{
 	"transaction_merges",
 	"match_rejections",
 	"classification_rules",
+	"daily_summary_deliveries",
 }
 
 type Document struct {

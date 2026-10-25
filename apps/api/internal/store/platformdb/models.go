@@ -11,12 +11,14 @@ import (
 )
 
 type Account struct {
-	ID             uuid.UUID
-	Name           string
-	CreatedAt      time.Time
-	Timezone       string
-	StatementMonth string
-	SandboxOf      *uuid.UUID
+	ID                  uuid.UUID
+	Name                string
+	CreatedAt           time.Time
+	Timezone            string
+	StatementMonth      string
+	SandboxOf           *uuid.UUID
+	DailySummaryEnabled bool
+	DailySummaryTime    string
 }
 
 type ApiKey struct {
@@ -120,6 +122,13 @@ type ClassificationRule struct {
 	ArchivedReason *string
 	CreatedAt      time.Time
 	ArchivedAt     *time.Time
+}
+
+type DailySummaryDelivery struct {
+	AccountID   uuid.UUID
+	Day         time.Time
+	DeliveredAt time.Time
+	DeliveredBy string
 }
 
 type ExportLink struct {

@@ -369,6 +369,14 @@ The principal, interest, IOF and fee Case reads on a statement line are stored i
   - **Freshness:** each plan carries the date of its information, and a projection older than 40 days is flagged as stale.
 - **Payments** (`Payments`): each statement's previous balance, payments and credits, and whether the next statement of the same card shows it paid. A reconciled statement is never "paid" without that evidence. Payments and balances never count as spending.
 
+### Daily summary
+
+The daily summary (#52) is Case's message with the previous day's purchases. Lastro computes it and never sends messages.
+
+- **Settings:** `accounts.daily_summary_enabled` (off by default) and `accounts.daily_summary_time` (`HH:MM` in the account time zone, `08:00` by default, the time Rudolfo chose in #51). `set_daily_summary` changes them only when Rudolfo asks; Case keeps its own scheduled task at that time.
+- **Content:** `get_daily_summary` answers a finished day (yesterday by default; today or later is refused) with the same purchases view as `query_spending` for that day, grouped by category, the open questions and the coverage limitations. Its pt-BR `summary` never reads as "no spending" when the coverage has gaps. Turned off, it only says so.
+- **Delivery:** `mark_daily_summary_delivered` records the day in `daily_summary_deliveries` (one row per account and day, kept forever). A second mark keeps the first delivery and answers `already_delivered`; `get_daily_summary` flags the day as `delivered`.
+
 ### Case evaluation
 
 `internal/evaluation` (#56) measures how Case follows the procedures, against fixed synthetic scenarios, without touching Rudolfo's records.
@@ -492,13 +500,13 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 - **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes, `statements:write` for statements) and refuses the call with a `forbidden` tool error otherwise.
 - **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
-- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`, `answer_queries`, `run_case_evaluation`) for other clients. The server `instructions` summarize the rules.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`, `answer_queries`, `deliver_daily_summary`, `run_case_evaluation`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
 - **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`, `queries`, `evaluation`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`, `queries`, `daily_summary`, `evaluation`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -523,6 +531,9 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_statement_summary` | `expenses:read` | What a statement charges: composition, categories, installments by modality, payment evidence and review |
 | `get_future_commitments` | `expenses:read` | Installments still to come, known and estimated, by month, with the date of the information |
 | `get_pix_installment_summary` | `expenses:read` | Pix installment plans: charged, interest and fees detailed, still to come |
+| `set_daily_summary` | `expenses:write` | Turns the daily summary on or off and sets its time, only when Rudolfo asks |
+| `get_daily_summary` | `expenses:read` | Yesterday's (or a finished day's) purchases by category, open questions and coverage, with the message ready, whether it is on and whether the day was delivered |
+| `mark_daily_summary_delivered` | `expenses:write` | Records that the summary of a day was sent, so it is never sent twice |
 | `export_data` | `expenses:read` | Secret 15-minute link to the zip with every record (CSVs and the complete JSON) |
 | `start_case_evaluation` | `expenses:write` | Opens a two-hour evaluation in a sandbox account and returns the conversation messages and the statement text to handle |
 | `finish_case_evaluation` | `expenses:write` | Grades the sandbox: hit rate per flow and the failed checks; calls go back to Rudolfo's account |

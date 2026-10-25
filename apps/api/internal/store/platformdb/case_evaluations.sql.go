@@ -17,7 +17,7 @@ INSERT INTO accounts (id, name, timezone, statement_month, sandbox_of)
 SELECT $1, $2, owner.timezone, owner.statement_month, owner.id
 FROM accounts owner
 WHERE owner.id = $3
-RETURNING id, name, created_at, timezone, statement_month, sandbox_of
+RETURNING id, name, created_at, timezone, statement_month, sandbox_of, daily_summary_enabled, daily_summary_time
 `
 
 type CreateSandboxAccountParams struct {
@@ -36,6 +36,8 @@ func (q *Queries) CreateSandboxAccount(ctx context.Context, arg CreateSandboxAcc
 		&i.Timezone,
 		&i.StatementMonth,
 		&i.SandboxOf,
+		&i.DailySummaryEnabled,
+		&i.DailySummaryTime,
 	)
 	return i, err
 }
