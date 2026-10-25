@@ -72,6 +72,7 @@ func NewHandler(deps Deps) http.Handler {
 		mux.HandleFunc("GET /v1/overview", a.authenticated(accounts.ScopeExpensesRead, a.handleOverview))
 		mux.HandleFunc("GET /v1/expenses", a.authenticated(accounts.ScopeExpensesRead, a.handleListExpenses))
 		mux.HandleFunc("GET /v1/expenses/{id}", a.authenticated(accounts.ScopeExpensesRead, a.handleExpenseDetail))
+		mux.HandleFunc("GET /v1/analysis", a.authenticated(accounts.ScopeExpensesRead, a.handleAnalysis))
 	}
 
 	if deps.MCP != nil {

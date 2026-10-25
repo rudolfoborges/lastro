@@ -103,6 +103,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `GET /v1/overview` | `expenses:read` | The app's month dashboard: totals, categories, days, comparison and coverage (see [What the app reads](#what-the-app-reads)) |
 | `GET /v1/expenses` | `expenses:read` | The expenses that compose a total, under the same rules, with filters and pages |
 | `GET /v1/expenses/{id}` | `expenses:read` | One expense explained: its status apart from its category's, dates and installments, and the notifications behind it |
+| `GET /v1/analysis` | `expenses:read` | Gross total by month, the same-days comparison and the change by category |
 
 Errors are JSON objects such as `{"error": "unauthorized"}`, with an optional `message`.
 
@@ -501,6 +502,8 @@ The Android app only reads: these routes never create, change or confirm anythin
 ```
 
 `GET /v1/expenses` takes `month` or `from` and `to` (up to 400 days), `currency`, and the repeatable (or comma-separated) filters `status` (`confirmed`, `provisional`, `pending_clarification`), `nature` (`expense`, `refund`), `category` (codes), `classification` (`confirmed`, `suggested`, `missing`) and `q` (description or store, without case or accents). It answers the totals of everything that matches, the `matching` count, one page of `items` (newest first; `limit` up to 200, 50 by default, and `offset`, with `next_offset` while more remain), and the gross of each day in the page. Each item says whether it is `in_total`, its `classification` apart from its `status`, and `amount_basis` `installment` when only the installment is known.
+
+`GET /v1/analysis?months=6` (1 to 12, ending with the current month) answers each month's gross with `in_progress` for the current one and its `coverage` (`complete`, `partial` when 24 hours or more went uncovered, `none` when the tracking never covered it), `history_starts_on` (the first day of tracking), the `same_days` comparison of the overview, and, only when that comparison is available, the change of every concluded category over the same days (`categories`, largest first). `unconcluded` counts this month's confirmed expenses whose category is still suggested or missing, which may still change the reading by category.
 
 `GET /v1/expenses/{id}` adds the installment plan (charged, known and estimated installments), the notifications behind the expense (`notification_id`, `version`, `posted_at`), whether a statement line confirms it, its refunds, the open questions and the last change (`at`, `author`). The text of notifications and conversations never comes back.
 
