@@ -98,3 +98,18 @@ func TestAcceptanceCriterion11AnEmptyPeriodWithoutCoverageIsNotNoSpending(t *tes
 		t.Errorf("summary = %q, want the limitation instead of no spending", got.out.Summary)
 	}
 }
+
+func TestCaseGetsASecretLinkToExportEverything(t *testing.T) {
+	e := newEnv(t)
+	principal := e.principal("Rudolfo", "expenses:read")
+	session := e.session(principal)
+
+	got := callTool[mcpserver.ExportDataOutput](t, session, "export_data", map[string]any{}, nil)
+
+	if got.isError || !strings.HasPrefix(got.out.DownloadURL, "https://lastro.test/v1/exports/") || got.out.ExpiresAt != "2026-10-22T03:05:00Z" {
+		t.Fatalf("export_data = %+v (%s)", got.out, got.text)
+	}
+	if token := strings.TrimPrefix(got.out.DownloadURL, "https://lastro.test/v1/exports/"); len(token) < 40 || e.count("export_links") != 1 {
+		t.Errorf("token = %q, links = %d, want one secret link recorded", token, e.count("export_links"))
+	}
+}

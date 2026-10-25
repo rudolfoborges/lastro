@@ -62,6 +62,12 @@ func (s *Store) TenantTx(ctx context.Context, accountID uuid.UUID, fn func(*tena
 	})
 }
 
+// TenantSQL runs fn in a tenant transaction with the raw connection, for the
+// export and restore of a whole account, which address every table by name.
+func (s *Store) TenantSQL(ctx context.Context, accountID uuid.UUID, fn func(pgx.Tx) error) error {
+	return s.inTenantTx(ctx, accountID, fn)
+}
+
 func (s *Store) inTenantTx(ctx context.Context, accountID uuid.UUID, fn func(pgx.Tx) error) error {
 	if accountID == uuid.Nil {
 		return fmt.Errorf("tenant transaction requires an account ID")

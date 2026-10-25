@@ -50,6 +50,8 @@ lastro <command> [arguments]
 | `accounts list` | Lists accounts with ID, creation time and name (operator only: it reads across accounts) |
 | `keys create --account <id> --name <name> --scopes <a,b>` | Issues an API key for an account and prints its token once, for example to replace a lost `admin` key |
 | `seed` | Creates a development account with `admin`, `case` and `android` keys and prints their tokens; refuses to run in production |
+| `export --account <id> --out <file.zip>` | Writes every record of an account: the complete JSON plus CSVs (see [operations](../../docs/operations.md#exporting-the-records)) |
+| `import --file <file.zip\|json>` | Restores an exported account, with the same IDs, into a database where it does not exist |
 | `help` | Lists the commands |
 
 ## Configuration
@@ -87,6 +89,7 @@ Configuration comes only from environment variables. The process refuses to boot
 | `POST /v1/oauth/grants/{id}/revoke` | `admin` | Revokes a client's access immediately |
 | `GET /healthz` | none | Liveness; never touches the database |
 | `GET /readyz` | none | Readiness; `503` when Postgres does not answer within 2s |
+| `GET /v1/exports/{token}` | the secret token of `export_data` (15 minutes) | The account's export as a zip; `404` when unknown or expired; logged without the token |
 | `POST /v1/accounts` | invite code | Creates an account and returns its first `admin` key |
 | `GET /v1/whoami` | any key | Describes the account and the calling key |
 | `PATCH /v1/account` | `admin` | Changes the account settings: `{"timezone": "America/Sao_Paulo"}` |
@@ -498,6 +501,7 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_statement_summary` | `expenses:read` | What a statement charges: composition, categories, installments by modality, payment evidence and review |
 | `get_future_commitments` | `expenses:read` | Installments still to come, known and estimated, by month, with the date of the information |
 | `get_pix_installment_summary` | `expenses:read` | Pix installment plans: charged, interest and fees detailed, still to come |
+| `export_data` | `expenses:read` | Secret 15-minute link to the zip with every record (CSVs and the complete JSON) |
 | `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
 | `confirm_match` | `expenses:write` | Merges two open transactions of the same purchase; the other one is kept as `merged` |
 | `reject_match` | `expenses:write` | Records that two transactions are different purchases, so they are never offered again |

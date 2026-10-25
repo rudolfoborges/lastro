@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,7 +67,7 @@ func withAccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("request_id", RequestID(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("route", r.Pattern),
-				slog.String("path", r.URL.Path),
+				slog.String("path", loggedPath(r)),
 				slog.Int("status", recorder.status),
 				slog.Duration("duration", time.Since(started)),
 			)
@@ -92,4 +93,13 @@ func withRecover(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// loggedPath keeps secrets that travel in the path, such as export tokens,
+// out of the logs: those routes are logged by their pattern only.
+func loggedPath(r *http.Request) string {
+	if strings.Contains(r.Pattern, "{token}") {
+		return r.Pattern
+	}
+	return r.URL.Path
 }

@@ -29,6 +29,8 @@ func commands() []command {
 		{name: "accounts", summary: "List accounts with their IDs (accounts list)", run: runAccounts},
 		{name: "keys", summary: "Issue an API key for an account, such as a lost admin key (keys create)", run: runKeys},
 		{name: "seed", summary: "Create a development account with admin, case and android keys", run: runSeed},
+		{name: "export", summary: "Write an account's records to a zip with CSVs and the complete JSON (export --account ID --out FILE)", run: runExport},
+		{name: "import", summary: "Restore an account from the JSON of an export into a database without it (import --file FILE)", run: runImport},
 	}
 }
 

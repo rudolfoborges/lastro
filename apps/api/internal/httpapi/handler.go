@@ -8,6 +8,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/oauth"
 )
@@ -27,6 +28,7 @@ type Deps struct {
 	TrustProxyHeaders bool
 	MCP               http.Handler
 	OAuth             *oauth.Server
+	Exports           *export.Service
 }
 
 type api struct {
@@ -37,6 +39,7 @@ type api struct {
 	clientLimits      *limiterSet
 	trustProxyHeaders bool
 	oauth             *oauth.Server
+	exports           *export.Service
 }
 
 func NewHandler(deps Deps) http.Handler {
@@ -48,6 +51,7 @@ func NewHandler(deps Deps) http.Handler {
 		clientLimits:      newLimiterSet(deps.RateLimits.UnauthenticatedPerMinute),
 		trustProxyHeaders: deps.TrustProxyHeaders,
 		oauth:             deps.OAuth,
+		exports:           deps.Exports,
 	}
 
 	mux := http.NewServeMux()
@@ -74,6 +78,10 @@ func NewHandler(deps Deps) http.Handler {
 		deps.OAuth.Routes(mux, a.limitedByClient)
 		mux.HandleFunc("GET /v1/oauth/grants", a.authenticated(accounts.ScopeAdmin, a.handleListGrants))
 		mux.HandleFunc("POST /v1/oauth/grants/{id}/revoke", a.authenticated(accounts.ScopeAdmin, a.handleRevokeGrant))
+	}
+
+	if deps.Exports != nil {
+		mux.HandleFunc("GET /v1/exports/{token}", a.limitedByClient(a.handleExportDownload))
 	}
 
 	return withRequestID(withAccessLog(deps.Logger)(withRecover(deps.Logger)(mux)))

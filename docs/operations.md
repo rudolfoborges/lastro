@@ -72,14 +72,27 @@ To roll back, redeploy the previous deployment from the Railway dashboard (image
 
 ## Backups and restore
 
-**There are no backups today.** The workspace is on the Hobby plan, where Railway rejects manual backups and backup schedules ("only available for Pro workspaces"), and while the project is experimental it runs without them: losing the Postgres volume loses the data.
+**There are no automatic backups.** The workspace is on the Hobby plan, where Railway rejects manual backups and backup schedules ("only available for Pro workspaces"). On 2026-10-24 Rudolfo chose (#47) to rely on manual exports instead of a scheduled `pg_dump`: losing the Postgres volume loses whatever was not exported.
 
-Before the new control becomes the main record of expenses (issue #50), pick one of these:
+### Exporting the records
 
-- Move the workspace to Pro and enable the daily, weekly and monthly schedules on the Postgres service's **Backups** tab (retained 6, 27 and 89 days). The restore procedure below applies.
-- Add a scheduled, encrypted `pg_dump` to a bucket.
+An export holds every record of one account: categories, payment methods, the redacted evidence (conversation, notifications, statement lines), interpretations, transactions with their links, categories, provenance and history, clarifications, statements, installment plans, charge components, merges, rejected pairs, classification rules and the phone's tracking state. Credentials, OAuth state, invites, idempotency keys and audit logs are left out.
 
-The independent export of the records (PRD §11) is covered by issue #47.
+- **Through Case:** "exporte meus dados" makes Case call `export_data`. It answers a secret link to `GET /v1/exports/{token}`, valid for 15 minutes; only the hash of the token is stored, and the route is logged without it.
+- **Operator:** `lastro export --account <id> --out lastro-export.zip`, with `DATABASE_URL` pointing at the database (for production, through `railway ssh --service api` or `railway run`).
+
+The zip contains `lastro-export.json`, the complete document, and CSVs for spreadsheets: `transactions.csv`, `allocations.csv`, `installments.csv`, `statements.csv` and `statement_lines.csv`, with decimal amounts.
+
+### Restoring from an export
+
+`lastro import --file lastro-export.zip` (or the `lastro-export.json` inside it) recreates the account with the same IDs in a database where it does not exist yet. The restore is one transaction: either everything is restored or nothing is. It is tested (`internal/export`): an export restored into an empty database reproduces the purchases, the statement composition and the future commitments.
+
+1. Create the database (a new Railway Postgres service, or a local one) and run `lastro migrate up` against it.
+2. Run `lastro import --file lastro-export.zip` with `DATABASE_URL` pointing at it.
+3. Issue new keys with `lastro keys create --account <id> ...`: keys and OAuth grants are not part of the export, so the phone and Case must be connected again.
+4. Verify with Case: `get_statement_review` and `query_spending` for a known period give the same totals as before.
+
+To rehearse without touching production, export from production, restore into a local database (`docker compose up -d postgres`) and compare the totals.
 
 ### Restoring a native backup (Pro)
 
