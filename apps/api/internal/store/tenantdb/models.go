@@ -108,6 +108,14 @@ type ClassificationRule struct {
 	ArchivedAt     *time.Time
 }
 
+type ExportLink struct {
+	ID        uuid.UUID
+	AccountID uuid.UUID
+	TokenHash []byte
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
 type FieldProvenance struct {
 	AccountID       uuid.UUID
 	TransactionID   uuid.UUID

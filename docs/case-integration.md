@@ -240,3 +240,4 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Quanto estou gastando com Pix parcelado e quanto disso são juros?" separates the interest the statements detailed from what came without detail.
 - [ ] "Quanto ainda tenho de parcelas futuras?" separates known from estimated and says how old the information is.
 - [ ] A question about a period before the tracking started is answered with the limitation, never as "no spending".
+- [ ] "Exporte meus dados" gives a link that downloads the zip within 15 minutes and stops working afterwards.

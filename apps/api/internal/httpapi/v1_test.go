@@ -13,6 +13,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/httpapi"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/store"
@@ -41,6 +42,7 @@ type testAPI struct {
 	handler  http.Handler
 	accounts *accounts.Service
 	ledger   *ledger.Service
+	exports  *export.Service
 	logs     *syncBuffer
 }
 
@@ -53,6 +55,7 @@ func newTestAPI(t *testing.T, limits config.RateLimits) *testAPI {
 	t.Cleanup(db.Close)
 	svc := accounts.NewService(db)
 	ledgerService := ledger.NewService(db)
+	exports := export.NewService(db)
 	logs := &syncBuffer{}
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Logger:     slog.New(slog.NewJSONHandler(logs, nil)),
@@ -60,8 +63,9 @@ func newTestAPI(t *testing.T, limits config.RateLimits) *testAPI {
 		Accounts:   svc,
 		Ledger:     ledgerService,
 		RateLimits: limits,
+		Exports:    exports,
 	})
-	return &testAPI{t: t, handler: handler, accounts: svc, ledger: ledgerService, logs: logs}
+	return &testAPI{t: t, handler: handler, accounts: svc, ledger: ledgerService, exports: exports, logs: logs}
 }
 
 type response struct {

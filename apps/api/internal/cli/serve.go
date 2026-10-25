@@ -10,6 +10,7 @@ import (
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
 	"github.com/rudolfoborges/lastro/apps/api/internal/config"
+	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/httpapi"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 	"github.com/rudolfoborges/lastro/apps/api/internal/logging"
@@ -33,7 +34,8 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 
 	accountsService := accounts.NewService(db)
 	ledgerService := ledger.NewService(db)
-	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledgerService, Logger: logger})
+	exports := export.NewService(db)
+	mcp := mcpserver.New(mcpserver.Deps{Accounts: accountsService, Ledger: ledgerService, Exports: exports, PublicBaseURL: cfg.PublicBaseURL.String(), Logger: logger})
 	authorization := oauth.New(db, accountsService, logger, oauth.Config{
 		Issuer:              cfg.PublicBaseURL,
 		RedirectHosts:       cfg.OAuth.RedirectHosts,
@@ -52,6 +54,7 @@ func runServe(ctx context.Context, _ []string, env Env) error {
 			TrustProxyHeaders: cfg.TrustProxyHeaders,
 			MCP:               mcp.HTTPHandler(),
 			OAuth:             authorization,
+			Exports:           exports,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,

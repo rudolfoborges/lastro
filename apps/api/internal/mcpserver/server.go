@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rudolfoborges/lastro/apps/api/internal/accounts"
+	"github.com/rudolfoborges/lastro/apps/api/internal/export"
 	"github.com/rudolfoborges/lastro/apps/api/internal/ledger"
 )
 
@@ -32,9 +33,11 @@ const serverInstructions = `Lastro stores, validates and computes Rudolfo's expe
 Call get_instructions with topic "conversation" before recording expenses, "classification" before classifying, "notifications" before processing Google Wallet notifications, "statements" before submitting a credit card statement, "matching" before linking records of the same purchase, and "queries" before answering questions about totals.`
 
 type Deps struct {
-	Accounts *accounts.Service
-	Ledger   *ledger.Service
-	Logger   *slog.Logger
+	Accounts      *accounts.Service
+	Ledger        *ledger.Service
+	Exports       *export.Service
+	PublicBaseURL string
+	Logger        *slog.Logger
 }
 
 type Server struct {
@@ -76,6 +79,9 @@ func New(deps Deps, opts ...Option) *Server {
 	s.registerMatching()
 	s.registerRules()
 	s.registerQueries()
+	if deps.Exports != nil {
+		s.registerExport()
+	}
 	return s
 }
 
