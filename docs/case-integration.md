@@ -236,6 +236,8 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Sempre que for na Padaria X, é café da manhã" makes Case call `create_classification_rule`; a later purchase there is classified with `category_rule_id` and shows origin `rule`.
 - [ ] A one-off "essa foi mercado" changes only that purchase: no rule appears in `list_classification_rules`.
 - [ ] A category Rudolfo confirmed stays when Case or a rule suggests another; the difference becomes a question.
+- [ ] "Na padaria, até 20 reais é café da manhã" creates a rule with `max_amount`; a R$ 32,00 purchase there is classified without the rule.
+- [ ] After two purchases at the same store with the category confirmed, Case suggests a rule and asks; nothing changes until Rudolfo says yes, and "não" archives the suggestion.
 
 ### Queries (M5)
 

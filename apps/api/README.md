@@ -209,7 +209,10 @@ Each transaction has **one category**, stored in `category_allocations` as a sin
 
 ### Classification rules
 
-`classification_rules` (#43) holds the rules Rudolfo asked for: a store (`merchant_key` folds case, accents and punctuation, one active rule per store), a category, an optional purpose and his words (`instruction`). They are created only by `create_classification_rule`; no correction or classification ever creates one, and they never change past purchases.
+`classification_rules` (#43) holds the rules Rudolfo asked for: a store (`merchant_key` folds case, accents and punctuation), a category, an optional purpose and his words (`instruction`). They are created only by `create_classification_rule`; no correction or classification ever creates one, and they never change past purchases.
+
+- **Conditions** (#55): a rule can also require an amount range (`min_amount_minor` / `max_amount_minor`, inclusive, in one `currency`), a card (`card_last4`) and a payment method. `conditions_key` makes one active rule per store and set of conditions. When Case sends a rule, the ledger checks the purchase's amount, card and method against the conditions and refuses the rule when they do not hold, so origin `rule` is never recorded on a purchase the rule does not cover. The store itself stays Case's call.
+- **Suggestions** (#55): `suggest_classification_rule` records a rule with status `suggested`, a `rationale` and `based_on` (2 to 50 purchases). Each of those must be at the store, meet the conditions and have the rule's category confirmed by Rudolfo. A suggestion never classifies anything and cannot be sent as a rule. `approve_classification_rule` makes it `active` with Rudolfo's words (`approved_at`), and archiving it records his refusal.
 
 The server does not apply them. Case lists them and sends the rule with the category it decided (`category_rule_id` on `record_expense`, notification interpretations and statement items; `rule_id` on `set_category`). Lastro checks that the rule is active and takes its category, which is stored as `suggested` with origin `rule` and the instruction as the reason. A confirmed category is never replaced by a rule (criterion 13): the attempt becomes a `field_conflict` question.
 
@@ -526,9 +529,11 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `submit_statement_extraction` | `statements:write` | Records Case's reading of a statement PDF whole or not at all, with page and excerpt for every line; `dry_run` reviews without recording |
 | `get_statement_review` | `expenses:read` | Composition, computed versus printed total, status and pending items of a statement |
 | `get_statement_line_source` | `expenses:read` | Page and excerpt of a statement line, by transaction or by statement and index |
-| `create_classification_rule` | `expenses:write` | Saves a rule Rudolfo asked for (store → category, purpose), never from a one-off correction |
-| `list_classification_rules` | `expenses:read` | Rudolfo's active (or archived) rules, for Case to apply |
-| `archive_classification_rule` | `expenses:write` | Stops a rule; categories it decided stay |
+| `create_classification_rule` | `expenses:write` | Saves a rule Rudolfo asked for (store and optional amount range, card or payment method → category, purpose), never from a one-off correction |
+| `list_classification_rules` | `expenses:read` | Rudolfo's active (or archived) rules, for Case to apply, and the suggestions waiting for him |
+| `suggest_classification_rule` | `expenses:write` | Records a rule Case proposes from purchases Rudolfo confirmed at a store; it never classifies until approved |
+| `approve_classification_rule` | `expenses:write` | Activates a suggestion after Rudolfo's explicit yes, with his words |
+| `archive_classification_rule` | `expenses:write` | Stops a rule or drops a refused suggestion; categories it decided stay |
 | `query_spending` | `expenses:read` | Purchases of a period by purchase date: confirmed, provisional and pending apart, refunds and net, per currency, with groups, filters, IDs, open questions and coverage limitations |
 | `get_statement_summary` | `expenses:read` | What a statement charges: composition, categories, installments by modality, payment evidence and review |
 | `get_future_commitments` | `expenses:read` | Installments still to come, known and estimated, by month, with the date of the information |

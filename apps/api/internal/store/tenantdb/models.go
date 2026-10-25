@@ -117,11 +117,20 @@ type ClassificationRule struct {
 	MerchantKey    string
 	CategoryID     uuid.UUID
 	Purpose        *string
-	Instruction    string
+	Instruction    *string
 	Status         string
 	ArchivedReason *string
 	CreatedAt      time.Time
 	ArchivedAt     *time.Time
+	MinAmountMinor *int64
+	MaxAmountMinor *int64
+	Currency       *string
+	CardLast4      *string
+	PaymentMethod  *string
+	ConditionsKey  string
+	Rationale      *string
+	BasedOn        []uuid.UUID
+	ApprovedAt     *time.Time
 }
 
 type DailySummaryDelivery struct {

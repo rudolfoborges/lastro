@@ -138,7 +138,7 @@ func (s *Service) RecordExpense(ctx context.Context, accountID uuid.UUID, report
 }
 
 func (t *tx) recordExpense(report ExpenseReport, loc *time.Location, actor Actor) (recordedExpense, error) {
-	rule, err := t.applyRule(report.CategoryRuleID, &report.Category, "category_rule_id")
+	rule, err := t.applyRule(report.CategoryRuleID, &report.Category, "category_rule_id", ruleFacts{Amount: report.Amount, Payment: report.PaymentMethod})
 	if err != nil {
 		return recordedExpense{}, err
 	}

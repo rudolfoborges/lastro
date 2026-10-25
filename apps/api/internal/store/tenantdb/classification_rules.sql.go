@@ -12,10 +12,33 @@ import (
 	"github.com/google/uuid"
 )
 
+const approveClassificationRule = `-- name: ApproveClassificationRule :exec
+UPDATE classification_rules
+SET status = 'active', instruction = $1, approved_at = $2
+WHERE account_id = $3 AND id = $4 AND status = 'suggested'
+`
+
+type ApproveClassificationRuleParams struct {
+	Instruction *string
+	ApprovedAt  *time.Time
+	AccountID   uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) ApproveClassificationRule(ctx context.Context, arg ApproveClassificationRuleParams) error {
+	_, err := q.db.Exec(ctx, approveClassificationRule,
+		arg.Instruction,
+		arg.ApprovedAt,
+		arg.AccountID,
+		arg.ID,
+	)
+	return err
+}
+
 const archiveClassificationRule = `-- name: ArchiveClassificationRule :exec
 UPDATE classification_rules
 SET status = 'archived', archived_at = now(), archived_reason = $1
-WHERE account_id = $2 AND id = $3 AND status = 'active'
+WHERE account_id = $2 AND id = $3 AND status IN ('active', 'suggested')
 `
 
 type ArchiveClassificationRuleParams struct {
@@ -30,7 +53,7 @@ func (q *Queries) ArchiveClassificationRule(ctx context.Context, arg ArchiveClas
 }
 
 const getClassificationRule = `-- name: GetClassificationRule :one
-SELECT r.id, r.account_id, r.merchant, r.merchant_key, r.category_id, r.purpose, r.instruction, r.status, r.archived_reason, r.created_at, r.archived_at, c.code AS category_code, c.label AS category_label
+SELECT r.id, r.account_id, r.merchant, r.merchant_key, r.category_id, r.purpose, r.instruction, r.status, r.archived_reason, r.created_at, r.archived_at, r.min_amount_minor, r.max_amount_minor, r.currency, r.card_last4, r.payment_method, r.conditions_key, r.rationale, r.based_on, r.approved_at, c.code AS category_code, c.label AS category_label
 FROM classification_rules r
 JOIN categories c ON c.account_id = r.account_id AND c.id = r.category_id
 WHERE r.account_id = $1 AND r.id = $2
@@ -48,11 +71,20 @@ type GetClassificationRuleRow struct {
 	MerchantKey    string
 	CategoryID     uuid.UUID
 	Purpose        *string
-	Instruction    string
+	Instruction    *string
 	Status         string
 	ArchivedReason *string
 	CreatedAt      time.Time
 	ArchivedAt     *time.Time
+	MinAmountMinor *int64
+	MaxAmountMinor *int64
+	Currency       *string
+	CardLast4      *string
+	PaymentMethod  *string
+	ConditionsKey  string
+	Rationale      *string
+	BasedOn        []uuid.UUID
+	ApprovedAt     *time.Time
 	CategoryCode   string
 	CategoryLabel  string
 }
@@ -72,6 +104,15 @@ func (q *Queries) GetClassificationRule(ctx context.Context, arg GetClassificati
 		&i.ArchivedReason,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.MinAmountMinor,
+		&i.MaxAmountMinor,
+		&i.Currency,
+		&i.CardLast4,
+		&i.PaymentMethod,
+		&i.ConditionsKey,
+		&i.Rationale,
+		&i.BasedOn,
+		&i.ApprovedAt,
 		&i.CategoryCode,
 		&i.CategoryLabel,
 	)
@@ -79,19 +120,37 @@ func (q *Queries) GetClassificationRule(ctx context.Context, arg GetClassificati
 }
 
 const insertClassificationRule = `-- name: InsertClassificationRule :one
-INSERT INTO classification_rules (id, account_id, merchant, merchant_key, category_id, purpose, instruction)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, account_id, merchant, merchant_key, category_id, purpose, instruction, status, archived_reason, created_at, archived_at
+INSERT INTO classification_rules (
+    id, account_id, merchant, merchant_key, category_id, purpose, instruction, status,
+    min_amount_minor, max_amount_minor, currency, card_last4, payment_method, conditions_key,
+    rationale, based_on, approved_at
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    $9, $10, $11, $12, $13, $14,
+    $15, $16::uuid[], $17
+)
+RETURNING id, account_id, merchant, merchant_key, category_id, purpose, instruction, status, archived_reason, created_at, archived_at, min_amount_minor, max_amount_minor, currency, card_last4, payment_method, conditions_key, rationale, based_on, approved_at
 `
 
 type InsertClassificationRuleParams struct {
-	ID          uuid.UUID
-	AccountID   uuid.UUID
-	Merchant    string
-	MerchantKey string
-	CategoryID  uuid.UUID
-	Purpose     *string
-	Instruction string
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	Merchant       string
+	MerchantKey    string
+	CategoryID     uuid.UUID
+	Purpose        *string
+	Instruction    *string
+	Status         string
+	MinAmountMinor *int64
+	MaxAmountMinor *int64
+	Currency       *string
+	CardLast4      *string
+	PaymentMethod  *string
+	ConditionsKey  string
+	Rationale      *string
+	BasedOn        []uuid.UUID
+	ApprovedAt     *time.Time
 }
 
 func (q *Queries) InsertClassificationRule(ctx context.Context, arg InsertClassificationRuleParams) (ClassificationRule, error) {
@@ -103,6 +162,16 @@ func (q *Queries) InsertClassificationRule(ctx context.Context, arg InsertClassi
 		arg.CategoryID,
 		arg.Purpose,
 		arg.Instruction,
+		arg.Status,
+		arg.MinAmountMinor,
+		arg.MaxAmountMinor,
+		arg.Currency,
+		arg.CardLast4,
+		arg.PaymentMethod,
+		arg.ConditionsKey,
+		arg.Rationale,
+		arg.BasedOn,
+		arg.ApprovedAt,
 	)
 	var i ClassificationRule
 	err := row.Scan(
@@ -117,16 +186,25 @@ func (q *Queries) InsertClassificationRule(ctx context.Context, arg InsertClassi
 		&i.ArchivedReason,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.MinAmountMinor,
+		&i.MaxAmountMinor,
+		&i.Currency,
+		&i.CardLast4,
+		&i.PaymentMethod,
+		&i.ConditionsKey,
+		&i.Rationale,
+		&i.BasedOn,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
 
 const listClassificationRules = `-- name: ListClassificationRules :many
-SELECT r.id, r.account_id, r.merchant, r.merchant_key, r.category_id, r.purpose, r.instruction, r.status, r.archived_reason, r.created_at, r.archived_at, c.code AS category_code, c.label AS category_label
+SELECT r.id, r.account_id, r.merchant, r.merchant_key, r.category_id, r.purpose, r.instruction, r.status, r.archived_reason, r.created_at, r.archived_at, r.min_amount_minor, r.max_amount_minor, r.currency, r.card_last4, r.payment_method, r.conditions_key, r.rationale, r.based_on, r.approved_at, c.code AS category_code, c.label AS category_label
 FROM classification_rules r
 JOIN categories c ON c.account_id = r.account_id AND c.id = r.category_id
-WHERE r.account_id = $1 AND (r.status = 'active' OR $2::boolean)
-ORDER BY r.status, r.merchant_key, r.created_at
+WHERE r.account_id = $1 AND (r.status IN ('active', 'suggested') OR $2::boolean)
+ORDER BY r.status, r.merchant_key, r.conditions_key, r.created_at
 `
 
 type ListClassificationRulesParams struct {
@@ -141,11 +219,20 @@ type ListClassificationRulesRow struct {
 	MerchantKey    string
 	CategoryID     uuid.UUID
 	Purpose        *string
-	Instruction    string
+	Instruction    *string
 	Status         string
 	ArchivedReason *string
 	CreatedAt      time.Time
 	ArchivedAt     *time.Time
+	MinAmountMinor *int64
+	MaxAmountMinor *int64
+	Currency       *string
+	CardLast4      *string
+	PaymentMethod  *string
+	ConditionsKey  string
+	Rationale      *string
+	BasedOn        []uuid.UUID
+	ApprovedAt     *time.Time
 	CategoryCode   string
 	CategoryLabel  string
 }
@@ -171,6 +258,15 @@ func (q *Queries) ListClassificationRules(ctx context.Context, arg ListClassific
 			&i.ArchivedReason,
 			&i.CreatedAt,
 			&i.ArchivedAt,
+			&i.MinAmountMinor,
+			&i.MaxAmountMinor,
+			&i.Currency,
+			&i.CardLast4,
+			&i.PaymentMethod,
+			&i.ConditionsKey,
+			&i.Rationale,
+			&i.BasedOn,
+			&i.ApprovedAt,
 			&i.CategoryCode,
 			&i.CategoryLabel,
 		); err != nil {

@@ -67,7 +67,7 @@ func (s *Service) SubmitStatement(ctx context.Context, accountID uuid.UUID, in S
 func (s *statementSubmitter) run() (StatementSubmission, error) {
 	hash := contentHash(s.in, s.identities)
 	for i := range s.in.Items {
-		rule, err := s.t.applyRule(s.in.Items[i].CategoryRuleID, &s.in.Items[i].Category, fmt.Sprintf("items[%d].category_rule_id", i))
+		rule, err := s.t.applyRule(s.in.Items[i].CategoryRuleID, &s.in.Items[i].Category, fmt.Sprintf("items[%d].category_rule_id", i), s.factsOf(s.in.Items[i]))
 		if err != nil {
 			return StatementSubmission{}, err
 		}
@@ -734,4 +734,12 @@ func optionalString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func (s *statementSubmitter) factsOf(item StatementItem) ruleFacts {
+	card := item.CardLast4
+	if card == nil {
+		card = &s.in.CardLast4
+	}
+	return ruleFacts{Amount: &item.Amount, Payment: &PaymentMethodRef{Kind: PaymentCreditCard, CardLast4: card}}
 }

@@ -123,7 +123,7 @@ func (s *Service) InterpretNotification(ctx context.Context, accountID uuid.UUID
 
 func (a *interpreter) run() (InterpretationOutcome, error) {
 	hash := a.in.submissionHash()
-	rule, err := a.t.applyRule(a.in.CategoryRuleID, &a.in.Category, "category_rule_id")
+	rule, err := a.t.applyRule(a.in.CategoryRuleID, &a.in.Category, "category_rule_id", ruleFacts{Amount: a.in.Amount, Payment: a.in.PaymentMethod})
 	if err != nil {
 		return InterpretationOutcome{}, err
 	}
