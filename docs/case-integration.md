@@ -76,6 +76,7 @@ Rules that always apply:
 - When Rudolfo sends a credit card statement PDF, read get_instructions topic "statements", read every page yourself and send only the structured reading with submit_statement_extraction (first with dry_run true). Never send the PDF to Lastro and never record statement lines with record_expense. "O que falta conferir nesta fatura?" is answered by get_statement_review.
 - Before answering about spending, statements, installments or Pix parcelado, read get_instructions topic "queries" and use its tools. Say which view and period you used, keep confirmed, provisional and pending apart, and relay the coverage limitations.
 - Never add up amounts yourself.
+- When Rudolfo asks for an evaluation ("avalie como você usa o Lastro"), read get_instructions topic "evaluation" and follow it: everything goes to a sandbox account until finish_case_evaluation, and you never ask Rudolfo anything in between.
 ```
 
 ## Conversation procedure
@@ -241,3 +242,9 @@ Before testing: refresh the Lastro app in ChatGPT and paste the updated project 
 - [ ] "Quanto ainda tenho de parcelas futuras?" separates known from estimated and says how old the information is.
 - [ ] A question about a period before the tracking started is answered with the limitation, never as "no spending".
 - [ ] "Exporte meus dados" gives a link that downloads the zip within 15 minutes and stops working afterwards.
+
+### Case evaluation (M5)
+
+- [ ] "Avalie como você usa o Lastro" makes Case read `get_instructions` (evaluation), call `start_case_evaluation`, handle the seven messages, the inbox and the statement without asking anything, and call `finish_case_evaluation`.
+- [ ] The report gives the hit rate of the four flows and the failed checks; Case says which step it will follow differently for each error.
+- [ ] Nothing of the evaluation appears in "quais foram os gastos da semana?" afterwards, and the real inbox is processed as usual.

@@ -16,6 +16,7 @@ type Account struct {
 	CreatedAt      time.Time
 	Timezone       string
 	StatementMonth string
+	SandboxOf      *uuid.UUID
 }
 
 type ApiKey struct {
@@ -40,6 +41,19 @@ type ApiRequest struct {
 	DurationMs   int32
 	OccurredAt   time.Time
 	OauthGrantID *uuid.UUID
+}
+
+type CaseEvaluation struct {
+	ID               uuid.UUID
+	AccountID        uuid.UUID
+	SandboxAccountID uuid.UUID
+	CredentialKind   string
+	CredentialID     uuid.UUID
+	ScenarioVersion  int32
+	StartedAt        time.Time
+	ExpiresAt        time.Time
+	FinishedAt       *time.Time
+	Report           []byte
 }
 
 type Category struct {

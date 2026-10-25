@@ -249,6 +249,7 @@ O acompanhamento deve ser rápido quando as informações estiverem disponíveis
 ### Decisões tomadas
 
 - Referência dos comparativos mensais de faturas: o mês do **fechamento**, que acompanha o período de consumo do ciclo (decidido por Rudolfo em 24/10/2026, #44).
+- Avaliação da Case: a própria Case roda a avaliação quando Rudolfo pede, numa **conta de avaliação** separada por até duas horas, com cenários sintéticos fixos; o Lastro corrige e devolve a taxa de acerto por fluxo e os erros. Nada da avaliação entra nos registros de Rudolfo (#56).
 
 ### Decisões que ainda precisam ser tomadas
 

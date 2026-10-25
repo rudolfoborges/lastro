@@ -12,7 +12,7 @@ import (
 )
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, name, created_at, timezone, statement_month
+SELECT id, name, created_at, timezone, statement_month, sandbox_of
 FROM accounts
 WHERE id = $1
 `
@@ -26,6 +26,7 @@ func (q *Queries) GetAccount(ctx context.Context, id uuid.UUID) (Account, error)
 		&i.CreatedAt,
 		&i.Timezone,
 		&i.StatementMonth,
+		&i.SandboxOf,
 	)
 	return i, err
 }
@@ -48,7 +49,7 @@ const updateAccountTimezone = `-- name: UpdateAccountTimezone :one
 UPDATE accounts
 SET timezone = $1
 WHERE id = $2
-RETURNING id, name, created_at, timezone, statement_month
+RETURNING id, name, created_at, timezone, statement_month, sandbox_of
 `
 
 type UpdateAccountTimezoneParams struct {
@@ -65,6 +66,7 @@ func (q *Queries) UpdateAccountTimezone(ctx context.Context, arg UpdateAccountTi
 		&i.CreatedAt,
 		&i.Timezone,
 		&i.StatementMonth,
+		&i.SandboxOf,
 	)
 	return i, err
 }

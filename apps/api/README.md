@@ -146,6 +146,7 @@ Every response carries an `X-Request-ID` header. A valid incoming ID is kept; ot
 | `internal/ledger` | Domain core: observations and their interpretations, transactions, evidence links, payment methods and field provenance |
 | `internal/logging` | `log/slog` setup |
 | `internal/taxonomy` | The default categories every account starts with |
+| `internal/evaluation` | Case evaluation: sandbox accounts, the synthetic scenarios and their grading |
 | `internal/store` | Postgres pool and the platform and tenant transactions |
 | `internal/store/migrations` | SQL migrations embedded in the binary and the goose runner |
 | `internal/store/queries/{platform,tenant}` | SQL queries compiled by sqlc |
@@ -365,6 +366,16 @@ The principal, interest, IOF and fee Case reads on a statement line are stored i
   - **Freshness:** each plan carries the date of its information, and a projection older than 40 days is flagged as stale.
 - **Payments** (`Payments`): each statement's previous balance, payments and credits, and whether the next statement of the same card shows it paid. A reconciled statement is never "paid" without that evidence. Payments and balances never count as spending.
 
+### Case evaluation
+
+`internal/evaluation` (#56) measures how Case follows the procedures, against fixed synthetic scenarios, without touching Rudolfo's records.
+
+- **Sandbox:** `start_case_evaluation` creates an account with `accounts.sandbox_of` pointing at Rudolfo's, with his time zone, statement month and the default categories, and loads six Google Wallet notifications into its inbox. The run is a `case_evaluations` row (platform table, out of reach of the application role) bound to the credential that started it.
+- **Routing:** while the run is open and within two hours, every MCP call of that credential gets the sandbox account instead of Rudolfo's; other credentials are not affected. A run that ran out of time refuses every call with `evaluation_expired` until `finish_case_evaluation`, so scenario records never fall into Rudolfo's account.
+- **Scenarios** (`ScenarioVersion` 1): seven conversation messages (a repeated message, a debit purchase at a gas station's convenience store, fuel, a marketplace purchase without the product, an approximate amount without what was bought, a Pix without purpose), the six notifications (a purchase and its update, a declined payment, a refund, a notice, an unreadable text) and the text of a statement (an installment 03/10, a detailed and an undetailed Pix installment, a purchase in dollars with IOF, two identical rides and a refund).
+- **Grading:** `finish_case_evaluation` reads the sandbox through the ledger and runs the checks of each flow (conversation, notifications, statements, classification). The report has the hit rate per flow, the failed checks in pt-BR and criterion 8 (convenience kept apart from meals, groceries and fuel). Checks of what must not be recorded only pass when Case handled the related input, so an empty run scores zero.
+- **Sandboxes** stay as accounts of their own and are left out of `lastro accounts list`.
+
 ### Matching sources
 
 The same purchase may arrive from the conversation, from Google Wallet and from a statement. **Lastro never links them by itself** (`ledger/matching.go`): it offers explainable candidates and Case decides, asking Rudolfo when in doubt.
@@ -470,13 +481,13 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 - **Authentication**: `/mcp` goes through the same bearer authentication, rate limits and request audit as `/v1`. Each tool requires a scope (`expenses:read` for reads, `expenses:write` for writes, `statements:write` for statements) and refuses the call with a `forbidden` tool error otherwise.
 - **The server never interprets**: tools receive data Case already understood, validate it and answer with errors Case can act on. A tool error carries `{"outcome": "failed", "error": code, "field", "message"}` and means nothing was written.
 - **Conventions**: `snake_case` names, English descriptions and schemas, JSON Schema input and structured output, annotations (`readOnlyHint`, `idempotentHint`, `destructiveHint`) on every tool, and a `summary` in pt-BR on writes for Case to relay.
-- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`, `answer_queries`) for other clients. The server `instructions` summarize the rules.
+- **Procedures**: Case's procedures live in `internal/mcpserver/instructions/` and are served by the `get_instructions` tool (the channel ChatGPT uses) and as MCP prompts (`conversation_procedure`, `classification_policy`, `process_pending_notifications`, `process_statement`, `match_sources`, `answer_queries`, `run_case_evaluation`) for other clients. The server `instructions` summarize the rules.
 - **Audit**: every tool call is recorded in `tool_calls` (tool, credential, outcome, error code, duration), never arguments or results.
 - **Conversation identity**: the `openai/session` value ChatGPT sends in `_meta` is read by the server for the repetition warning of `record_expense`; it is not a tool argument. Observations keep only its SHA-256 (`conversation_hash`), never the ID itself.
 
 | Tool | Scope | What it does |
 | --- | --- | --- |
-| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`, `queries`) in Markdown |
+| `get_instructions` | any | Returns a procedure (`conversation`, `classification`, `notifications`, `statements`, `matching`, `queries`, `evaluation`) in Markdown |
 | `list_categories` | `expenses:read` | Lists the account's category codes and labels |
 | `save_category` | `expenses:write` | Creates a category or renames an existing code |
 | `record_expense` | `expenses:write` | Records an expense Case understood from the conversation |
@@ -502,6 +513,9 @@ Case reaches Lastro through MCP, built on the official Go SDK. `/mcp` serves Str
 | `get_future_commitments` | `expenses:read` | Installments still to come, known and estimated, by month, with the date of the information |
 | `get_pix_installment_summary` | `expenses:read` | Pix installment plans: charged, interest and fees detailed, still to come |
 | `export_data` | `expenses:read` | Secret 15-minute link to the zip with every record (CSVs and the complete JSON) |
+| `start_case_evaluation` | `expenses:write` | Opens a two-hour evaluation in a sandbox account and returns the conversation messages and the statement text to handle |
+| `finish_case_evaluation` | `expenses:write` | Grades the sandbox: hit rate per flow and the failed checks; calls go back to Rudolfo's account |
+| `get_case_evaluation` | `expenses:read` | The latest evaluation reports |
 | `find_match_candidates` | `expenses:read` | Open transactions from other sources that may be the same purchase, with reasons and differences |
 | `confirm_match` | `expenses:write` | Merges two open transactions of the same purchase; the other one is kept as `merged` |
 | `reject_match` | `expenses:write` | Records that two transactions are different purchases, so they are never offered again |
